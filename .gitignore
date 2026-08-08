@@ -1,0 +1,16 @@
+.next/
+dist/
+node_modules/
+.env
+.env.local
+data/
+coverage/
+playwright-report/
+test-results/
+*.log
+*.tsbuildinfo
+.impeccable/
+
+# 本地智能体工作流配置，不属于比赛源码交付。
+CLAUDE.md
+docs/agents/

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -27,7 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <main className="workbench-shell">
           <aside className="workbench-sidebar">
             <Link className="brand" href="/radar" aria-label="X News Toolbox 操作台">
-              <span aria-hidden="true">X</span>
+              <Image alt="" height={30} priority src="/x-news-toolbox-logo.png" width={30} />
               <strong>X News Toolbox</strong>
             </Link>
             <WorkbenchNav />

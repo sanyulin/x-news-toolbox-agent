@@ -70,15 +70,10 @@ a {
   text-decoration: none;
 }
 
-.workbench-sidebar .brand > span {
+.workbench-sidebar .brand > img {
   width: 30px;
   height: 30px;
-  display: grid;
-  place-items: center;
   border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
 }
 
 .workbench-sidebar .brand strong {

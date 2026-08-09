@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 interface ConnectionConfig {
@@ -10,7 +9,6 @@ interface ConnectionConfig {
 }
 
 export function ConnectionSettings({ initialConfig }: { initialConfig: ConnectionConfig }) {
-  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
@@ -38,7 +36,7 @@ export function ConnectionSettings({ initialConfig }: { initialConfig: Connectio
       if (!response.ok) throw new Error(result.error || "连接配置保存失败");
       setMessage(`已连接 ${result.mind.name}`);
       formElement.reset();
-      router.refresh();
+      window.location.reload();
     } catch (error) {
       setFailed(true);
       setMessage(error instanceof Error ? error.message : "连接配置保存失败");

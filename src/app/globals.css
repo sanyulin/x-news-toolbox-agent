@@ -481,6 +481,10 @@ a {
 .draft-card { padding: 20px; }
 .draft-card header > span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .draft-card p { margin: 18px 0 0; white-space: pre-wrap; }
+.draft-warning { display: block; margin-top: 12px; color: #b54708; }
+.draft-platform-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.draft-platform-picker > span { margin-right: 4px; color: var(--muted); font-size: 13px; font-weight: 650; }
+.draft-platform-picker .is-active { background: var(--primary); color: #fff; }
 
 .status-dot {
   width: 7px;

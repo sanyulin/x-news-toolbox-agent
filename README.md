@@ -18,6 +18,22 @@ Creators often jump between feeds, accounts, notes, and AI tools just to find a 
 - **Difficult setup:** configure Mind, Horizon AI, and X credentials through a visual connection panel with clear status feedback.
 - **Poor portability:** build a self-contained Windows folder that can be moved to another computer and configured by its user.
 
+## Who it helps
+
+X News Toolbox is designed for independent creators, newsletter writers, community operators, researchers, and small content teams who publish the same idea in different platform formats. It is especially useful for creators who need evidence-backed writing but do not want to maintain separate research notes, prompts, and editing checklists for every platform.
+
+## Cross-platform writing support
+
+The workspace turns one reviewed, evidence-backed idea into a platform-specific draft instead of forcing the creator to write three unrelated versions from scratch. The creator chooses the output platform (currently X, LinkedIn, or Threads), and the toolbox applies that platform's length and format checks before showing a copyable draft.
+
+This helps creators:
+
+- reduce repeated rewriting and manual character counting;
+- keep the same verified facts and source links across platforms;
+- adapt tone and structure without losing their personal style;
+- see warnings before a draft is copied or published; and
+- keep final approval in human hands with no automatic posting.
+
 ## Workspace
 
 | Page | Purpose |
@@ -25,7 +41,7 @@ Creators often jump between feeds, accounts, notes, and AI tools just to find a 
 | Signal Radar | Run the agent across selected sources and review deduplicated, ranked signals. |
 | Sources | Add, test, enable, or disable RSS, Atom, JSON, RSSHub, and X sources. |
 | Style Profiles | Analyze authorized X accounts and store abstract tone and writing traits. |
-| Drafts | Generate Chinese or English suggestions from evidence and the active style profile. |
+| Drafts | Choose X, LinkedIn, or Threads and generate a validated platform-specific draft from the same evidence and style profile. |
 | Results | Record reviews, final copy, published links, and optional performance metrics. |
 | Connections | Configure the Mind ID, Minds API key, Horizon AI provider, and X API credentials, and inspect connection status. |
 

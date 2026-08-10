@@ -1,43 +1,63 @@
 import { createHash } from "node:crypto";
 
+import { extractFromJson, extractFromXml, type FeedData } from "@extractus/feed-extractor";
+
 import type {
   RadarSignal,
   SignalCollection,
   SignalSource,
 } from "@/core/creator-desk";
+import { safeFetch } from "@/server/safe-fetch";
 import { readXPosts } from "@/server/x-reader";
 
 type CollectInput = Parameters<SignalSource["collect"]>[0];
-type RssFeed = { name: string; url: string; mapping?: Record<string, string> };
+type RssFeed = {
+  name: string;
+  url: string;
+  mapping?: Record<string, string>;
+  headers?: Record<string, string>;
+};
 
 export function createRssSignalSource({
   feeds,
-  fetcher = fetch,
+  fetcher,
   timeoutMs = 8_000,
 }: {
   feeds: RssFeed[];
   fetcher?: typeof fetch;
   timeoutMs?: number;
 }) {
+  const request = fetcher ?? ((input: string | URL | Request, init?: RequestInit) =>
+    safeFetch(input, init, { timeoutMs }));
   return {
     async collect(input: CollectInput): Promise<SignalCollection> {
       const warnings: string[] = [];
       const batches = await Promise.all(
         feeds.map(async (feed) => {
           try {
-            const response = await fetcher(feed.url, {
-              headers: { accept: "application/json, application/atom+xml, application/rss+xml, application/xml, text/xml" },
+            const response = await request(feed.url, {
+              headers: {
+                accept: "application/json, application/atom+xml, application/rss+xml, application/xml, text/xml",
+                ...feed.headers,
+              },
               redirect: "error",
               signal: AbortSignal.timeout(timeoutMs),
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const body = await response.text();
-            return response.headers.get("content-type")?.includes("json") ||
-              /^[\s\r\n]*[\[{]/.test(body)
-              ? parseJsonFeed(body, feed, input)
-              : parseFeed(body, feed, input);
-          } catch {
-            warnings.push(`RSS 来源「${feed.name}」暂时不可用，已跳过`);
+            if (response.headers.get("content-type")?.includes("json") || /^[\s\r\n]*[\[{]/.test(body)) {
+              const payload = JSON.parse(body) as unknown;
+              return isJsonFeed(payload)
+                ? parseStandardFeed(extractFromJson(payload as Record<string, unknown>, { baseUrl: feed.url, descriptionMaxLen: 1_500 }), feed, input)
+                : parseJsonFeed(payload, feed, input);
+            }
+            return parseStandardFeed(
+              extractFromXml(body, { baseUrl: feed.url, descriptionMaxLen: 1_500 }),
+              feed,
+              input,
+            );
+          } catch (error) {
+            warnings.push(`RSS 来源「${feed.name}」暂时不可用：${error instanceof Error ? error.message : "未知错误"}`);
             return [];
           }
         }),
@@ -142,7 +162,7 @@ export function createConfiguredSignalSource({
   xBearerToken,
   xQuery = "AI -is:retweet",
   xAccounts = [],
-  fetcher = fetch,
+  fetcher,
   fallbackToDemo = true,
 }: {
   demoSource: SignalSource;
@@ -226,24 +246,13 @@ export function createConfiguredSignalSource({
   };
 }
 
-function parseFeed(xml: string, feed: RssFeed, input: CollectInput) {
-  const blocks = [
-    ...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi),
-    ...xml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi),
-  ].slice(0, 5);
-  return blocks.flatMap((match): RadarSignal[] => {
-    const block = match[1] ?? "";
-    const title = clean(readTag(block, ["title"]));
-    const summary = clean(
-      readTag(block, ["description", "summary", "content"]),
-    );
-    const sourceUrl = clean(readTag(block, ["link"])) || atomLink(block);
+function parseStandardFeed(data: FeedData, feed: RssFeed, input: CollectInput) {
+  return (data.entries ?? []).slice(0, 5).flatMap((entry): RadarSignal[] => {
+    const title = clean(entry.title ?? "");
+    const summary = clean(entry.description ?? "");
+    const sourceUrl = entry.link ?? "";
     if (!title || !sourceUrl) return [];
     const canonicalUrl = canonicalize(sourceUrl);
-    const publishedAt = validDate(
-      clean(readTag(block, ["pubDate", "published", "updated"])),
-      input.asOf,
-    );
     return [
       {
         id: `rss-${hash(canonicalUrl)}`,
@@ -252,7 +261,7 @@ function parseFeed(xml: string, feed: RssFeed, input: CollectInput) {
         sourceName: feed.name,
         sourceUrl,
         canonicalUrl,
-        publishedAt,
+        publishedAt: validDate(entry.published, input.asOf),
         relevanceScore: relevance(`${title} ${summary}`, input.focus),
         synthetic: false,
       },
@@ -260,8 +269,7 @@ function parseFeed(xml: string, feed: RssFeed, input: CollectInput) {
   });
 }
 
-function parseJsonFeed(body: string, feed: RssFeed, input: CollectInput) {
-  const payload = JSON.parse(body) as unknown;
+function parseJsonFeed(payload: unknown, feed: RssFeed, input: CollectInput) {
   const record = isRecord(payload) ? payload : undefined;
   const items = Array.isArray(payload)
     ? payload
@@ -296,6 +304,12 @@ function parseJsonFeed(body: string, feed: RssFeed, input: CollectInput) {
   });
 }
 
+function isJsonFeed(value: unknown) {
+  return isRecord(value) &&
+    typeof value.version === "string" &&
+    value.version.startsWith("https://jsonfeed.org/version/");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -311,35 +325,11 @@ function mappedKeys(mapped: string | undefined, fallback: string[]) {
   return mapped?.trim() ? [mapped.trim(), ...fallback] : fallback;
 }
 
-function readTag(block: string, names: string[]) {
-  for (const name of names) {
-    const match = block.match(
-      new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, "i"),
-    );
-    if (match?.[1]) return match[1];
-  }
-  return "";
-}
-
-function atomLink(block: string) {
-  return block.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*\/?\s*>/i)?.[1] ?? "";
-}
-
 function clean(value: string) {
-  return decodeEntities(
-    value.replace(/^<!\[CDATA\[|\]\]>$/g, "").replace(/<[^>]+>/g, " "),
-  )
+  return value
+    .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function decodeEntities(value: string) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'");
 }
 
 function canonicalize(value: string) {

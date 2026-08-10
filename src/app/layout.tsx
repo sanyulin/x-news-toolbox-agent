@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { WorkbenchNav } from "@/app/components/workbench-nav";
 import { createAppDesk } from "@/server/create-app-desk";
+import { horizonRuntimeReady } from "@/server/horizon-worker";
 import { getPublicRuntimeConfig } from "@/server/runtime-config";
 import { createWorkspaceDataStore } from "@/server/workspace-data";
 
@@ -20,7 +21,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const config = getPublicRuntimeConfig();
   const mind = dashboard.systemStatus.mind;
   const mindConnected = mind.state === "connected";
-  const databaseReady = dashboard.systemStatus.database.state === "ready";
+  const horizonReady = config.horizon.enabled && config.horizon.apiKeyConfigured && horizonRuntimeReady();
   const sources = createWorkspaceDataStore().listSources();
   return (
     <html lang="zh-CN">
@@ -32,18 +33,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <strong>X News Toolbox</strong>
             </Link>
             <WorkbenchNav />
-            <Link className="sidebar-connection" href="/settings/connections">
-              <span className={mindConnected ? "status-dot status-dot-ready" : "status-dot"} />
-              {mindConnected ? mind.mindName : "Mind 未连接"}
-            </Link>
           </aside>
           <section className="workbench-main">
             <header className="workspace-header">
               <div className="connection-strip" aria-label="连接状态">
                 <Status href="/settings/connections" ready={mindConnected} label="Mind" value={mindConnected ? mind.mindName : "未连接"} />
-                <Status href="/settings/connections" ready={config.xApiKeyConfigured} label="X" value={config.xApiKeyConfigured ? "已配置" : "未配置"} />
+                <Status href="/settings/connections" ready={horizonReady} label="Horizon" value={horizonReady ? "已就绪" : "未配置"} />
                 <Status href="/sources" ready={sources.some((source) => source.enabled)} label="来源" value={`${sources.filter((source) => source.enabled).length} 个启用`} />
-                <Status href="/results" ready={databaseReady} label="数据库" value={databaseReady ? "正常" : "异常"} />
               </div>
             </header>
             <div className="workspace-content">{children}</div>

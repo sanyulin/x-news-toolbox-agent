@@ -48,6 +48,37 @@ try {
   Copy-Item -LiteralPath $readmeTemplate -Destination $outputDir
   New-Item -ItemType Directory -Path (Join-Path $outputDir "data") | Out-Null
 
+  $horizonManifestPath = Join-Path $projectRoot ".runtime\horizon.json"
+  if (-not (Test-Path -LiteralPath $horizonManifestPath)) {
+    throw "未安装 Horizon Worker，请先运行 scripts\bootstrap-horizon.ps1"
+  }
+  $horizonManifest = Get-Content -LiteralPath $horizonManifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
+  if ($horizonManifest.commit -ne "80bde6db03008678111fb627b471792c7ac05a94") {
+    throw "Horizon Worker 不是已审计的固定版本"
+  }
+  $pythonRuntime = [string]$horizonManifest.pythonRuntime
+  $horizonSitePackages = Join-Path $projectRoot ".runtime\horizon-$($horizonManifest.commit)\.venv\Lib\site-packages"
+  if (-not (Test-Path -LiteralPath (Join-Path $pythonRuntime "python.exe"))) { throw "Horizon Python 运行时不完整" }
+  if (-not (Test-Path -LiteralPath (Join-Path $horizonSitePackages "src\mcp\server.py"))) { throw "Horizon Python 包不完整" }
+
+  $portableHorizon = Join-Path $outputDir "runtime\horizon"
+  $portablePython = Join-Path $portableHorizon "python"
+  New-Item -ItemType Directory -Path $portableHorizon -Force | Out-Null
+  New-Item -ItemType Directory -Path $portablePython | Out-Null
+  Copy-Item -Path (Join-Path $pythonRuntime "*") -Destination $portablePython -Recurse -Force
+  New-Item -ItemType Directory -Path (Join-Path $portablePython "Lib\site-packages") -Force | Out-Null
+  Get-ChildItem -LiteralPath $horizonSitePackages -Force |
+    Where-Object { $_.Name -ne "data" } |
+    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $portablePython "Lib\site-packages") -Recurse -Force }
+  @{
+    commit = [string]$horizonManifest.commit
+    command = "python\python.exe"
+    args = @("-m", "src.mcp.server")
+    cwd = "."
+    horizonPath = "python\Lib\site-packages"
+  } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $portableHorizon "manifest.json") -Encoding UTF8
+  Copy-Item -LiteralPath (Join-Path $projectRoot "licenses\Horizon-MIT.txt") -Destination $portableHorizon
+
   $forbiddenPaths = @(
     ".env",
     ".env.local",

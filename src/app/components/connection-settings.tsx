@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 
 interface ConnectionConfig {
   apiKeyConfigured: boolean;
-  xApiKeyConfigured: boolean;
   mindId: string | null;
 }
 
@@ -28,8 +27,6 @@ export function ConnectionSettings({ initialConfig }: { initialConfig: Connectio
         body: JSON.stringify({
           builderApiKey: form.get("builderApiKey"),
           mindId: form.get("mindId"),
-          xBearerToken: form.get("xBearerToken"),
-          xQuery: form.get("xQuery"),
         }),
       });
       const result = await response.json();
@@ -62,28 +59,15 @@ export function ConnectionSettings({ initialConfig }: { initialConfig: Connectio
             type="password"
           />
         </label>
-        <label className="field">
-          <span>Mind ID</span>
-          <input
-            defaultValue={initialConfig.mindId ?? ""}
-            name="mindId"
-            placeholder="留空则自动选择账号下第一个 Mind"
-          />
-        </label>
-        <label className="field">
-          <span>Twitter / X API Key</span>
-          <input
-            autoComplete="off"
-            name="xBearerToken"
-            placeholder={initialConfig.xApiKeyConfigured ? "已配置，留空不修改" : "输入 Bearer Token"}
-            type="password"
-          />
-        </label>
-        <label className="field">
-          <span>Twitter 搜索词</span>
-          <input name="xQuery" placeholder="例如：AI agents lang:zh -is:retweet" />
-        </label>
       </div>
+
+      <details className="advanced-settings">
+        <summary>高级设置</summary>
+        <label className="field">
+          <span>Mind ID（可选）</span>
+          <input defaultValue={initialConfig.mindId ?? ""} name="mindId" placeholder="留空自动选择第一个 Mind" />
+        </label>
+      </details>
 
       <div className="profile-actions">
         <p className={failed ? "profile-message profile-message-error" : "profile-message"} aria-live="polite">

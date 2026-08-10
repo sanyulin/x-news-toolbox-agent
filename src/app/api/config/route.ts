@@ -71,6 +71,7 @@ export async function POST(request: Request) {
   }
 
   const saved = {
+    ...current,
     builderApiKey,
     xBearerToken: parsed.data.xBearerToken || current.xBearerToken,
     mindId: inspection.mind.id,

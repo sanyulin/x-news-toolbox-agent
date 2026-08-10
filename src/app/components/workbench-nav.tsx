@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 const items = [
   ["/radar", "信息扫描"],
   ["/sources", "信息来源"],
-  ["/style", "风格档案"],
+  ["/style", "写作风格"],
   ["/drafts", "内容草稿"],
-  ["/results", "结果记录"],
-  ["/settings/connections", "接口设置"],
+  ["/results", "运行结果"],
+  ["/settings/connections", "连接设置"],
 ] as const;
 
 export function WorkbenchNav() {

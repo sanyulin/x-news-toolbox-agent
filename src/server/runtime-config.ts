@@ -8,6 +8,54 @@ export interface RuntimeConfig {
   xQuery?: string;
   conversationAlias?: string;
   defaultSourceUrl?: string;
+  sourceCredentials?: Record<string, SourceCredential>;
+  horizon?: HorizonRuntimeConfig;
+}
+
+export type HorizonProvider =
+  | "openai"
+  | "deepseek"
+  | "anthropic"
+  | "gemini"
+  | "doubao"
+  | "ali"
+  | "minimax"
+  | "azure"
+  | "ollama";
+
+const horizonDefaultModels: Record<HorizonProvider, string> = {
+  openai: "gpt-4",
+  deepseek: "deepseek-v4-flash",
+  anthropic: "claude-3-5-sonnet-20241022",
+  gemini: "gemini-1.5-flash",
+  doubao: "doubao-pro-32k",
+  ali: "qwen-plus",
+  minimax: "MiniMax-M3",
+  azure: "gpt-4",
+  ollama: "llama3.1",
+};
+
+export function defaultHorizonModel(provider: HorizonProvider) {
+  return horizonDefaultModels[provider];
+}
+
+export interface HorizonRuntimeConfig {
+  enabled: boolean;
+  provider?: HorizonProvider;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  azureEndpoint?: string;
+  hours: number;
+  threshold: number;
+  hackerNews: boolean;
+  ossInsight: boolean;
+  enrich: boolean;
+}
+
+export interface SourceCredential {
+  type: "bearer" | "api-key";
+  secret: string;
 }
 
 export interface PublicRuntimeConfig {
@@ -16,6 +64,7 @@ export interface PublicRuntimeConfig {
   mindId: string | null;
   conversationAlias: string;
   defaultSourceUrl: string | null;
+  horizon: Omit<HorizonRuntimeConfig, "apiKey"> & { apiKeyConfigured: boolean };
 }
 
 export function runtimeConfigPath() {
@@ -36,6 +85,8 @@ export function loadRuntimeConfig(path = runtimeConfigPath()): RuntimeConfig {
       xQuery: cleanString(value.xQuery),
       conversationAlias: cleanString(value.conversationAlias),
       defaultSourceUrl: cleanString(value.defaultSourceUrl),
+      sourceCredentials: readSourceCredentials(value.sourceCredentials),
+      horizon: readHorizonConfig(value.horizon),
     };
   } catch {
     return {};
@@ -66,6 +117,8 @@ export function getEffectiveRuntimeConfig(
       "creator-main",
     defaultSourceUrl:
       stored.defaultSourceUrl || (!portable ? firstEnvironmentSource(environment.CREATOR_MIND_RSS_FEEDS) : undefined),
+    sourceCredentials: stored.sourceCredentials,
+    horizon: stored.horizon,
   };
 }
 
@@ -76,6 +129,23 @@ export function toPublicRuntimeConfig(config: RuntimeConfig): PublicRuntimeConfi
     mindId: config.mindId || null,
     conversationAlias: config.conversationAlias || "creator-main",
     defaultSourceUrl: config.defaultSourceUrl || null,
+    horizon: publicHorizonConfig(config.horizon),
+  };
+}
+
+function publicHorizonConfig(config?: HorizonRuntimeConfig): PublicRuntimeConfig["horizon"] {
+  return {
+    enabled: config?.enabled ?? false,
+    provider: config?.provider,
+    model: config?.model,
+    baseUrl: config?.baseUrl,
+    azureEndpoint: config?.azureEndpoint,
+    hours: config?.hours ?? 24,
+    threshold: config?.threshold ?? 7,
+    hackerNews: config?.hackerNews ?? true,
+    ossInsight: config?.ossInsight ?? false,
+    enrich: config?.enrich ?? true,
+    apiKeyConfigured: Boolean(config?.apiKey),
   };
 }
 
@@ -98,4 +168,55 @@ function firstEnvironmentSource(value?: string) {
   } catch {
     return undefined;
   }
+}
+
+function readSourceCredentials(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const credentials = Object.entries(value).flatMap(([id, item]) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const type = record.type;
+    const secret = cleanString(record.secret);
+    return (type === "bearer" || type === "api-key") && secret
+      ? [[id, { type, secret }] as const]
+      : [];
+  });
+  return credentials.length ? Object.fromEntries(credentials) : undefined;
+}
+
+function readHorizonConfig(value: unknown): HorizonRuntimeConfig | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const provider = isHorizonProvider(record.provider) ? record.provider : undefined;
+  return {
+    enabled: record.enabled === true,
+    provider,
+    model: provider ? defaultHorizonModel(provider) : undefined,
+    apiKey: cleanString(record.apiKey),
+    baseUrl: cleanString(record.baseUrl),
+    azureEndpoint: cleanString(record.azureEndpoint),
+    hours: boundedNumber(record.hours, 1, 168, 24),
+    threshold: boundedNumber(record.threshold, 0, 10, 7),
+    hackerNews: record.hackerNews !== false,
+    ossInsight: record.ossInsight === true,
+    enrich: record.enrich !== false,
+  };
+}
+
+function isHorizonProvider(value: unknown): value is HorizonProvider {
+  return ["openai", "deepseek", "anthropic", "gemini", "doubao", "ali", "minimax", "azure", "ollama"].includes(String(value));
+}
+
+function boundedNumber(value: unknown, minimum: number, maximum: number, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum
+    ? value
+    : fallback;
+}
+
+export function sourceCredentialHeaders(config: RuntimeConfig, sourceId: string): Record<string, string> | undefined {
+  const credential = config.sourceCredentials?.[sourceId];
+  if (!credential) return undefined;
+  return credential.type === "bearer"
+    ? { authorization: `Bearer ${credential.secret}` }
+    : { "x-api-key": credential.secret };
 }

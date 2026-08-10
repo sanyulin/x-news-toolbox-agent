@@ -57,4 +57,26 @@ describe("workspace data store", () => {
     expect(store.listStyleProfiles().filter((item) => item.status === "active")).toHaveLength(1);
     expect(store.listStyleProfiles()[0]).not.toHaveProperty("posts");
   });
+
+  it("persists radar job progress across page refreshes", () => {
+    const store = createWorkspaceDataStore(databasePath);
+    store.saveRadarJob({
+      id: "job-1",
+      commandId: "command-1",
+      sourceIds: ["source-1"],
+      stage: "queued",
+      status: "running",
+      message: "等待运行",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    });
+    store.updateRadarJob("job-1", { stage: "scoring", message: "AI 评分中" });
+
+    expect(createWorkspaceDataStore(databasePath).getLatestRadarJob()).toMatchObject({
+      id: "job-1",
+      stage: "scoring",
+      status: "running",
+      message: "AI 评分中",
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { isPublicHttpsUrl, resolvesToPublicAddress } from "@/server/network-address";
+import { loadRuntimeConfig, saveRuntimeConfig } from "@/server/runtime-config";
 import { createWorkspaceDataStore } from "@/server/workspace-data";
 import { normalizeXHandle } from "@/server/x-reader";
 
@@ -37,6 +38,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const deleted = createWorkspaceDataStore().deleteSource(id);
+  const config = loadRuntimeConfig();
+  if (deleted && config.sourceCredentials?.[id]) {
+    const { [id]: _removed, ...sourceCredentials } = config.sourceCredentials;
+    saveRuntimeConfig({ ...config, sourceCredentials });
+  }
   return deleted
     ? NextResponse.json({ ok: true })
     : NextResponse.json({ ok: false, error: "来源不存在" }, { status: 404 });

@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-  A["RSS / X 官方 API / 演示来源"] --> B["统一 RadarSignal 契约"]
+  A["Horizon / JSON API / X 官方 API"] --> B["统一 RadarSignal 契约"]
   B --> C["核心 Mind：选题排序"]
   C --> D["证据包与未知项"]
   D --> E["核心 Mind：中英表达建议"]
@@ -21,15 +21,17 @@ flowchart LR
 
 - `CreatorDesk`：唯一业务入口，负责流程、幂等键、版本冲突和安全门。
 - `MindAuthority`：Minds Builder API 的隔离边界，负责选题、表达与学习三类语义判断。
-- `SignalSource`：RSS、X 官方 API 和演示数据共享的来源契约；每条信号都带 URL、时间和 `synthetic` 标记。
+- `SignalSource`：Horizon、JSON API 与 X 官方 API 共享的来源契约；每条信号都带 URL、时间、引擎元数据和 `synthetic` 标记。
+- `Horizon Worker`：固定到审计提交 `80bde6db03008678111fb627b471792c7ac05a94` 的 Python stdio MCP 子进程，负责采集、评分、去重、筛选和补充背景；不拥有第二套业务数据库。
 - SQLite Stores：保存创作者基线、雷达、证据、审核、发布关联与学习版本。
 - Daily Follow-up：单例 SQLite Job 负责领取到期任务；Next.js 进程 worker 与受密钥保护的托管 cron 共用同一公开命令，原子领取避免重复运行。
 - Next.js 页面与 API：只收集输入和呈现状态，不在浏览器暴露密钥。
 
-## 真实与演示模式
+## 真实运行规则
 
-- “运行真实来源”会并行尝试已配置 RSS 与 X 官方 API；单源失败只产生中文警告。
-- 所有真实来源不可用时回退固定演示信号；演示信号逐条标记 `synthetic: true`。
+- 手动雷达与每日任务使用同一套 Horizon/JSON/X 真实来源流水线；阶段状态持久化到 SQLite，刷新页面仍可查看。
+- 正式运行不会自动回退演示信号；所有真实来源不可用时任务明确失败。
+- Horizon 自带的 Twitter/Apify/Playwright 来源显式关闭；X 账号只走现有官方 X API 适配器。
 - Recorded Mind 只服务自动化与无凭证演练；比赛正式展示需要连接真实核心 Mind，并展示 Mind 名称、会话别名和决策标识。
 - 演示发布与学习继续保留 `synthetic`，不会伪装成真实效果。
 

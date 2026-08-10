@@ -19,7 +19,11 @@ describe("Minds 能力 Adapter", () => {
         { mindId: "mind-b", name: "创作者主脑" },
       ]),
       ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
-      getLatestHistoryFingerprint: vi.fn().mockResolvedValue("before-1"),
+      getHistory: vi.fn().mockResolvedValue([
+        { fingerprint: "0003-newest", senderType: 0, messageText: "最新回复" },
+        { fingerprint: "0001-oldest", senderType: 0, messageText: "旧回复" },
+      ]),
+      getLatestHistoryFingerprint: vi.fn().mockResolvedValue("0001-oldest"),
       sendMessage: vi.fn().mockResolvedValue({}),
       waitForReply: vi.fn().mockResolvedValue({
         timedOut: false,
@@ -50,7 +54,7 @@ describe("Minds 能力 Adapter", () => {
     expect(client.waitForReply).toHaveBeenCalledWith(
       expect.objectContaining({
         alias: "creator-main",
-        afterFingerprint: "before-1",
+        afterFingerprint: "0003-newest",
       }),
     );
   });
@@ -215,6 +219,11 @@ describe("Minds 能力 Adapter", () => {
       chineseDraft: expect.stringContaining("可验证结果"),
       englishDraft: expect.stringContaining("delivered value"),
     });
+    expect(client.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageText: expect.stringContaining("可以生成明确归因的一手事实更新"),
+      }),
+    );
   });
 
   it("把实际发布文本和原始指标交给 Mind 生成结构化学习更新", async () => {

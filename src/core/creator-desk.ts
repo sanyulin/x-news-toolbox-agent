@@ -104,6 +104,13 @@ export interface RadarSignal {
   evidenceStatus?: "supported" | "conflicted" | "unknown";
   mindReason?: string;
   recommendation?: "write" | "watch" | "skip";
+  engine?: {
+    name: "horizon";
+    version: string;
+    score?: number;
+    reason?: string;
+    tags?: string[];
+  };
 }
 
 export interface RadarRun {

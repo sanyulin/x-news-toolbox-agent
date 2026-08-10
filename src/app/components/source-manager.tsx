@@ -13,9 +13,10 @@ const typeLabels: Record<SourceType, string> = {
   "x-account": "X 账号",
 };
 
-export function SourceManager({ initialSources }: { initialSources: SourceRecord[] }) {
+export function SourceManager({ initialSources, xApiKeyConfigured }: { initialSources: SourceRecord[]; xApiKeyConfigured: boolean }) {
   const router = useRouter();
   const [type, setType] = useState<SourceType>("rss");
+  const [authType, setAuthType] = useState<"none" | "bearer" | "api-key">("none");
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState("");
 
@@ -39,10 +40,14 @@ export function SourceManager({ initialSources }: { initialSources: SourceRecord
               .map((key) => [key, String(data.get(`mapping.${key}`) ?? "").trim()])
               .filter(([, value]) => value),
           ) : undefined,
+          authType: type === "json" ? authType : "none",
+          credential: type === "json" ? data.get("credential") : undefined,
+          xBearerToken: type === "x-account" ? data.get("xBearerToken") : undefined,
         }),
       });
       form.reset();
       setType("rss");
+      setAuthType("none");
       setMessage("来源已添加");
       router.refresh();
     } catch (error) {
@@ -79,15 +84,23 @@ export function SourceManager({ initialSources }: { initialSources: SourceRecord
   return (
     <section className="page-stack">
       <header className="page-heading">
-        <div><span className="eyebrow">SOURCE REGISTRY</span><h2>信息来源</h2></div>
+        <h2>信息来源</h2>
         <span className="page-count">{initialSources.filter((source) => source.enabled).length} / {initialSources.length} 启用</span>
       </header>
 
       <form className="surface source-add-form" onSubmit={addSource}>
-        <label className="field"><span>类型</span><select onChange={(event) => setType(event.target.value as SourceType)} value={type}>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="field"><span>类型</span><select onChange={(event) => { setType(event.target.value as SourceType); setAuthType("none"); }} value={type}>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="field"><span>名称</span><input maxLength={80} name="name" placeholder="例如：AI 行业资讯" required /></label>
         <label className="field source-locator"><span>{type === "x-account" ? "X 账号" : "HTTPS 地址"}</span><input name="locator" placeholder={type === "x-account" ? "@username" : "https://example.com/feed.xml"} required type="text" /></label>
         <button className="primary-action compact-action" disabled={busy === "add"} type="submit">{busy === "add" ? "正在添加…" : "添加来源"}</button>
+        {type === "json" ? <div className="source-auth-fields">
+          <label className="field"><span>认证方式</span><select onChange={(event) => setAuthType(event.target.value as typeof authType)} value={authType}><option value="none">无需认证</option><option value="bearer">Bearer Token</option><option value="api-key">API Key（X-API-Key）</option></select></label>
+          {authType !== "none" ? <label className="field"><span>{authType === "bearer" ? "Bearer Token" : "API Key（X-API-Key）"}</span><input autoComplete="off" name="credential" placeholder="密钥仅保存在本机" required type="password" /></label> : null}
+        </div> : null}
+        {type === "x-account" ? <div className="source-auth-fields">
+          <label className="field"><span>X Bearer Token</span><input autoComplete="off" name="xBearerToken" placeholder={xApiKeyConfigured ? "已配置，留空继续使用" : "输入 X Bearer Token"} required={!xApiKeyConfigured} type="password" /></label>
+          <small>只需配置一次，所有 X 来源共用。</small>
+        </div> : null}
         {type === "json" ? <details className="mapping-fields"><summary>JSON 字段映射（可选）</summary><div>{[["title", "标题字段"], ["url", "链接字段"], ["summary", "摘要字段"], ["publishedAt", "时间字段"]].map(([key, label]) => <label className="field" key={key}><span>{label}</span><input name={`mapping.${key}`} placeholder={key} /></label>)}</div></details> : null}
       </form>
 

@@ -37,7 +37,7 @@ describe("真实信号 Adapter", () => {
       }),
     ).resolves.toMatchObject({
       mode: "live",
-      warnings: ["RSS 来源「故障源」暂时不可用，已跳过"],
+      warnings: ["RSS 来源「故障源」暂时不可用：network down"],
       signals: [
         {
           title: "AI 团队开始衡量交付结果",
@@ -51,23 +51,22 @@ describe("真实信号 Adapter", () => {
   });
 
   it("读取常见 JSON API 的内容列表", async () => {
+    const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          items: [{
+            title: "Agent 产品开始进入真实工作流",
+            url: "https://example.com/posts/agent-workflow",
+            summary: "团队开始记录 Agent 的来源、判断和执行结果。",
+            publishedAt: "2026-08-05T03:00:00.000Z",
+          }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
     const source = createRssSignalSource({
-      feeds: [{ name: "内容 API", url: "https://example.com/api/posts" }],
-      fetcher: vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            items: [
-              {
-                title: "Agent 产品开始进入真实工作流",
-                url: "https://example.com/posts/agent-workflow",
-                summary: "团队开始记录 Agent 的来源、判断和执行结果。",
-                publishedAt: "2026-08-05T03:00:00.000Z",
-              },
-            ],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      ) as typeof fetch,
+      feeds: [{ name: "内容 API", url: "https://example.com/api/posts", headers: { "x-api-key": "source-secret" } }],
+      fetcher: fetcher as typeof fetch,
     });
 
     await expect(
@@ -87,6 +86,7 @@ describe("真实信号 Adapter", () => {
         },
       ],
     });
+    expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ "x-api-key": "source-secret" });
   });
 
   it("只通过 X 官方 recent search API 读取公开帖子", async () => {

@@ -1,52 +1,111 @@
-import { lookup } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
+
+import ipaddr from "ipaddr.js";
+import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
+
+export type AddressResolver = (hostname: string) => Promise<string[]>;
+
+const DEFAULT_DNS_SERVERS = ["1.1.1.1", "8.8.8.8"];
 
 export function isPublicHttpsUrl(value: string) {
-  const url = new URL(value);
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (url.protocol !== "https:" || hostname === "localhost") return false;
-  if (hostname.endsWith(".local") || hostname.includes(":")) return false;
-  return isPublicNetworkAddress(hostname);
-}
-
-export async function resolvesToPublicAddress(value: string) {
   try {
-    const addresses = await lookup(new URL(value).hostname, { all: true });
-    return (
-      addresses.length > 0 &&
-      addresses.every(({ address }) => isPublicNetworkAddress(address))
-    );
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "443") ||
+      hostname === "localhost" ||
+      hostname.endsWith(".local")
+    ) {
+      return false;
+    }
+    return !ipaddr.isValid(hostname) || isPublicNetworkAddress(hostname);
   } catch {
     return false;
   }
 }
 
-function isPublicNetworkAddress(address: string) {
-  const normalized = address.toLowerCase();
-  if (normalized.includes(":")) {
-    const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-    if (mappedIpv4) return isPublicNetworkAddress(mappedIpv4);
-    return !(
-      normalized === "::" ||
-      normalized === "::1" ||
-      normalized.startsWith("fc") ||
-      normalized.startsWith("fd") ||
-      /^fe[89ab]/.test(normalized)
-    );
+export async function resolvesToPublicAddress(
+  value: string,
+  resolver: AddressResolver = resolveWithTrustedDns,
+) {
+  try {
+    return (await resolvePublicAddresses(value, resolver)).length > 0;
+  } catch {
+    return false;
   }
-  const octets = normalized.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part))) {
-    return true;
+}
+
+export async function resolvePublicAddresses(
+  value: string,
+  resolver: AddressResolver = resolveWithTrustedDns,
+) {
+  if (!isPublicHttpsUrl(value)) throw new Error("来源必须是公网 HTTPS 地址");
+  const hostname = new URL(value).hostname.replace(/^\[|\]$/g, "");
+  const addresses = ipaddr.isValid(hostname) ? [hostname] : await resolver(hostname);
+  const unique = [...new Set(addresses)];
+  if (!unique.length || unique.some((address) => !isPublicNetworkAddress(address))) {
+    throw new Error("来源域名未解析到安全的公网地址");
   }
-  const [first, second] = octets;
-  return !(
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 198 && (second === 18 || second === 19)) ||
-    first >= 224
+  return unique;
+}
+
+export async function resolveWithTrustedDns(hostname: string) {
+  const resolver = new Resolver();
+  resolver.setServers(
+    process.env.SAFE_FETCH_DNS_SERVERS?.split(",").map((value) => value.trim()).filter(Boolean) ??
+      DEFAULT_DNS_SERVERS,
   );
+
+  const timer = setTimeout(() => resolver.cancel(), 5_000);
+  try {
+    const results = await Promise.allSettled([
+      resolver.resolve4(hostname),
+      resolver.resolve6(hostname),
+    ]);
+    const addresses = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+    return addresses.length ? addresses : resolveWithTrustedDoh(hostname);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveWithTrustedDoh(hostname: string) {
+  const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"]
+    .some((name) => process.env[name]?.trim());
+  const dispatcher = proxyConfigured ? new EnvHttpProxyAgent({ noProxy: "" }) : undefined;
+  try {
+    const answers = await Promise.all([1, 28].map(async (type) => {
+      const endpoint = new URL(process.env.SAFE_FETCH_DOH_URL?.trim() || "https://dns.google/resolve");
+      endpoint.search = new URLSearchParams({ name: hostname, type: String(type) }).toString();
+      const response = await undiciFetch(endpoint, {
+        dispatcher,
+        headers: { accept: "application/dns-json" },
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return [];
+      const payload = await response.json() as { Answer?: Array<{ type?: number; data?: string }> };
+      return (payload.Answer ?? [])
+        .filter((answer) => answer.type === type && typeof answer.data === "string" && ipaddr.isValid(answer.data))
+        .map((answer) => answer.data!);
+    }));
+    return answers.flat();
+  } finally {
+    await dispatcher?.close();
+  }
+}
+
+export function isPublicNetworkAddress(address: string) {
+  try {
+    const parsed = ipaddr.parse(address);
+    if (parsed instanceof ipaddr.IPv6 && parsed.isIPv4MappedAddress()) {
+      return parsed.toIPv4Address().range() === "unicast";
+    }
+    return parsed.range() === "unicast";
+  } catch {
+    return false;
+  }
 }

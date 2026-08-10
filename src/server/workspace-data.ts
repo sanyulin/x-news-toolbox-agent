@@ -5,6 +5,32 @@ import { DatabaseSync } from "node:sqlite";
 export type SourceType = "rss" | "atom" | "json" | "rsshub" | "x-account";
 export type SourceStatus = "unchecked" | "ready" | "error";
 
+export type RadarJobStage =
+  | "queued"
+  | "validating"
+  | "fetching"
+  | "scoring"
+  | "filtering"
+  | "enriching"
+  | "reading"
+  | "mind"
+  | "completed"
+  | "failed";
+
+export interface RadarJobRecord {
+  id: string;
+  commandId: string;
+  sourceIds: string[];
+  focus?: string;
+  stage: RadarJobStage;
+  status: "running" | "completed" | "failed";
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  radarOperationId?: string;
+  error?: string;
+}
+
 export interface SourceRecord {
   id: string;
   type: SourceType;
@@ -55,6 +81,40 @@ export function createWorkspaceDataStore(
   databasePath = resolveDatabasePath(process.env.CREATOR_MIND_DATABASE_PATH),
 ) {
   return {
+    getRadarJob(id: string): RadarJobRecord | undefined {
+      return withDatabase(databasePath, (database) => {
+        const row = database.prepare("SELECT job_json FROM radar_jobs WHERE id = ?").get(id) as { job_json: string } | undefined;
+        return row ? JSON.parse(row.job_json) as RadarJobRecord : undefined;
+      });
+    },
+
+    getLatestRadarJob(): RadarJobRecord | undefined {
+      return withDatabase(databasePath, (database) => {
+        const row = database.prepare("SELECT job_json FROM radar_jobs ORDER BY updated_at DESC LIMIT 1").get() as { job_json: string } | undefined;
+        return row ? JSON.parse(row.job_json) as RadarJobRecord : undefined;
+      });
+    },
+
+    saveRadarJob(job: RadarJobRecord) {
+      withDatabase(databasePath, (database) => {
+        database.prepare(`
+          INSERT INTO radar_jobs (id, command_id, status, updated_at, job_json)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            status = excluded.status,
+            updated_at = excluded.updated_at,
+            job_json = excluded.job_json
+        `).run(job.id, job.commandId, job.status, job.updatedAt, JSON.stringify(job));
+      });
+      return job;
+    },
+
+    updateRadarJob(id: string, patch: Partial<Omit<RadarJobRecord, "id" | "commandId" | "createdAt">>) {
+      const current = this.getRadarJob(id);
+      if (!current) return undefined;
+      return this.saveRadarJob({ ...current, ...patch, updatedAt: new Date().toISOString() });
+    },
+
     listSources(): SourceRecord[] {
       return withDatabase(databasePath, (database) =>
         database
@@ -244,6 +304,13 @@ function withDatabase<T>(databasePath: string, action: (database: DatabaseSync) 
         version INTEGER NOT NULL,
         generated_at TEXT NOT NULL,
         activated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS radar_jobs (
+        id TEXT PRIMARY KEY,
+        command_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        job_json TEXT NOT NULL
       );
     `);
     return action(database);

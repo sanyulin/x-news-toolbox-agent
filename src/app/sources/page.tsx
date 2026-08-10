@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default function SourcesPage() {
   const store = createWorkspaceDataStore();
-  store.ensureDefaultSource(getEffectiveRuntimeConfig().defaultSourceUrl);
-  return <SourceManager initialSources={store.listSources()} />;
+  const config = getEffectiveRuntimeConfig();
+  store.ensureDefaultSource(config.defaultSourceUrl);
+  return <SourceManager initialSources={store.listSources()} xApiKeyConfigured={Boolean(config.xBearerToken)} />;
 }

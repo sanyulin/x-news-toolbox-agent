@@ -9,6 +9,7 @@ import {
   getPublicRuntimeConfig,
   loadRuntimeConfig,
   saveRuntimeConfig,
+  sourceCredentialHeaders,
 } from "./runtime-config";
 
 const configPath = join(tmpdir(), `creator-mind-${crypto.randomUUID()}.json`);
@@ -26,6 +27,20 @@ describe("runtime config", () => {
         xBearerToken: "secret-x-key",
         conversationAlias: "creator-main",
         defaultSourceUrl: "https://example.com/feed.xml",
+        sourceCredentials: {
+          "source-json": { type: "api-key", secret: "secret-source-key" },
+        },
+        horizon: {
+          enabled: true,
+          provider: "deepseek",
+          model: "legacy-invalid-model",
+          apiKey: "secret-horizon-key",
+          hours: 24,
+          threshold: 7,
+          hackerNews: true,
+          ossInsight: false,
+          enrich: true,
+        },
       },
       configPath,
     );
@@ -39,6 +54,19 @@ describe("runtime config", () => {
       mindId: "mind-123",
       conversationAlias: "creator-main",
       defaultSourceUrl: "https://example.com/feed.xml",
+      horizon: {
+        enabled: true,
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        baseUrl: undefined,
+        azureEndpoint: undefined,
+        hours: 24,
+        threshold: 7,
+        hackerNews: true,
+        ossInsight: false,
+        enrich: true,
+        apiKeyConfigured: true,
+      },
     });
     expect(JSON.stringify(getPublicRuntimeConfig(configPath, {}))).not.toContain(
       "secret-builder-key",
@@ -46,6 +74,15 @@ describe("runtime config", () => {
     expect(JSON.stringify(getPublicRuntimeConfig(configPath, {}))).not.toContain(
       "secret-x-key",
     );
+    expect(JSON.stringify(getPublicRuntimeConfig(configPath, {}))).not.toContain(
+      "secret-source-key",
+    );
+    expect(JSON.stringify(getPublicRuntimeConfig(configPath, {}))).not.toContain(
+      "secret-horizon-key",
+    );
+    expect(sourceCredentialHeaders(loadRuntimeConfig(configPath), "source-json")).toEqual({
+      "x-api-key": "secret-source-key",
+    });
   });
 
   it("便携版首次启动忽略宿主机环境变量", () => {
@@ -64,6 +101,8 @@ describe("runtime config", () => {
       xQuery: undefined,
       conversationAlias: "creator-main",
       defaultSourceUrl: undefined,
+      sourceCredentials: undefined,
+      horizon: undefined,
     });
   });
 });

@@ -6,7 +6,9 @@ import {
   createSqliteWorkspaceStore,
 } from "@/adapters/sqlite-health";
 import { createCreatorDesk } from "@/core/creator-desk";
-import { getEffectiveRuntimeConfig } from "@/server/runtime-config";
+import type { SignalSource } from "@/core/creator-desk";
+import { getEffectiveRuntimeConfig, sourceCredentialHeaders } from "@/server/runtime-config";
+import { createRadarSignalSource } from "@/server/radar-signal-source";
 import { createWorkspaceDataStore, resolveDatabasePath, type SourceRecord } from "@/server/workspace-data";
 
 export { resolveDatabasePath } from "@/server/workspace-data";
@@ -79,7 +81,7 @@ export function createAppMindAuthority() {
   });
 }
 
-export function createAppDesk({ sourceUrl, sources }: { sourceUrl?: string; sources?: SourceRecord[] } = {}) {
+export function createAppDesk({ sourceUrl, sources, signalSource }: { sourceUrl?: string; sources?: SourceRecord[]; signalSource?: SignalSource } = {}) {
   const runtimeConfig = getEffectiveRuntimeConfig();
   const xBearerToken = runtimeConfig.xBearerToken;
   const dataStore = createWorkspaceDataStore(databasePath);
@@ -88,7 +90,12 @@ export function createAppDesk({ sourceUrl, sources }: { sourceUrl?: string; sour
   const configuredSources = selectedSources.length
     ? selectedSources
         .filter((source) => source.type !== "x-account")
-        .map((source) => ({ name: source.name, url: source.locator, mapping: source.mapping }))
+        .map((source) => ({
+          name: source.name,
+          url: source.locator,
+          mapping: source.mapping,
+          headers: sourceCredentialHeaders(runtimeConfig, source.id),
+        }))
     : parseRssFeeds(process.env.CREATOR_MIND_RSS_FEEDS);
   const activeRssFeeds = sourceUrl
     ? [{ name: new URL(sourceUrl).hostname, url: sourceUrl }]
@@ -128,14 +135,16 @@ export function createAppDesk({ sourceUrl, sources }: { sourceUrl?: string; sour
     publicationStore: workspaceStore,
     learningStore: workspaceStore,
     schedulerStore: workspaceStore,
-    signalSource: createConfiguredSignalSource({
+    signalSource: signalSource ?? (runtimeConfig.horizon?.enabled
+      ? createRadarSignalSource({ sources: selectedSources })
+      : createConfiguredSignalSource({
       demoSource: demoSignalSource,
       rssFeeds: activeRssFeeds,
       xBearerToken,
       xQuery: runtimeConfig.xQuery,
       xAccounts,
-      fallbackToDemo: !sourceUrl && !sources,
-    }),
+      fallbackToDemo: false,
+      })),
     xConfigured: Boolean(xBearerToken?.trim()),
   });
 }

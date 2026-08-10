@@ -50,16 +50,21 @@ export function StyleProfileManager({ profiles, xConfigured }: { profiles: Style
   return (
     <section className="page-stack">
       <header className="page-heading">
-        <div><span className="eyebrow">STYLE PROFILE</span><h2>风格档案</h2></div>
+        <h2>写作风格</h2>
         <span className={xConfigured ? "state state-ready" : "state"}>{xConfigured ? "X 已连接" : "需配置 X"}</span>
       </header>
 
       <form className="surface style-scan-form" onSubmit={scan}>
         <label className="field style-handles"><span>已授权 X 账号（最多 3 个）</span><input name="handles" placeholder="@account_a, @account_b" required /></label>
-        <label className="field"><span>样本数/账号</span><select defaultValue="100" name="sampleLimit"><option value="25">25 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
-        <label className="field"><span>参考强度</span><select defaultValue="medium" name="intensity"><option value="light">轻度参考</option><option value="medium">中等参考</option></select></label>
-        <label className="check-field"><input name="includeReplies" type="checkbox" /><span>将回复纳入样本</span></label>
         <label className="check-field authorization-check"><input name="authorized" required type="checkbox" /><span>我确认这些账号属于本人或已获得明确授权</span></label>
+        <details className="advanced-settings style-advanced">
+          <summary>扫描设置</summary>
+          <div className="style-advanced-fields">
+            <label className="field"><span>样本数/账号</span><select defaultValue="100" name="sampleLimit"><option value="25">25 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
+            <label className="field"><span>参考强度</span><select defaultValue="medium" name="intensity"><option value="light">轻度参考</option><option value="medium">中等参考</option></select></label>
+            <label className="check-field"><input name="includeReplies" type="checkbox" /><span>将回复纳入样本</span></label>
+          </div>
+        </details>
         <button className="primary-action compact-action" disabled={!xConfigured || scanning} type="submit">{scanning ? "Agent 正在分析…" : "扫描并生成档案"}</button>
       </form>
       <p className="form-status" aria-live="polite">{message}</p>

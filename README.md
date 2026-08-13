@@ -114,6 +114,7 @@ Additional project material:
 - [Open-source wheel research and technical selection](docs/research/github-wheel-comparison.md)
 - [Mind-first architecture decision](docs/mind-first-agent-decision.md)
 - [Mind Skill and Tool API contract](docs/mind-skill.md)
+- [Agent call flow](docs/agent-call-flow.md)
 
 ## Safety and privacy
 

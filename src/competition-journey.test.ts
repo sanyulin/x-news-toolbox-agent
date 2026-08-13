@@ -151,7 +151,7 @@ describe("比赛关键旅程", () => {
       competitionProof: {
         readyForJudging: false,
         selection: { status: "demo" },
-        expression: { status: "demo" },
+        expression: { status: "missing" },
         learning: { status: "demo" },
       },
     });
@@ -164,6 +164,8 @@ describe("比赛关键旅程", () => {
       "profile-operation",
       "schedule-operation",
       "scheduled-radar-operation",
+      "scheduled-proposal-operation",
+      "scheduled-platform-operation",
     ];
     const desk = createCreatorDesk({
       database: { check: async () => ({ ready: true }) },
@@ -179,6 +181,8 @@ describe("比赛关键旅程", () => {
       proposalStore: store,
       publicationStore: store,
       learningStore: store,
+      memoryStore: store,
+      platformDraftStore: store,
       schedulerStore: store,
       signalSource: {
         collect: async ({ asOf }) => [
@@ -215,6 +219,7 @@ describe("比赛关键旅程", () => {
         type: "configure_daily_follow_up",
         enabled: true,
         mode: "demo",
+        platform: "xiaohongshu",
       },
     });
 
@@ -222,6 +227,7 @@ describe("比赛关键旅程", () => {
     expect(dashboard.systemStatus.scheduler).toMatchObject({
       state: "enabled",
       mode: "demo",
+      platform: "xiaohongshu",
       nextRunAt: "2026-08-06T01:00:00.000Z",
     });
 
@@ -242,12 +248,15 @@ describe("比赛关键旅程", () => {
       runState: "idle",
       lastRunAt: "2026-08-06T01:00:00.000Z",
       lastRadarOperationId: "scheduled-radar-operation",
+      lastProposalOperationId: "scheduled-proposal-operation",
+      lastPlatformDraftOperationId: "scheduled-platform-operation",
       nextRunAt: "2026-08-07T01:00:00.000Z",
     });
     expect(dashboard.competitionProof.autonomy).toMatchObject({
       status: "demo",
       label: "仅有演示自主跟进证据",
     });
+    expect(dashboard.latestPlatformDraft).toMatchObject({ platform: "xiaohongshu", validation: { valid: true } });
 
   });
 
@@ -271,11 +280,49 @@ describe("比赛关键旅程", () => {
           type: "configure_daily_follow_up",
           enabled: true,
           mode: "real",
+          platform: "x",
         },
       }),
     ).rejects.toThrow("请先连接核心 Mind");
     await expect(desk.inspect({ view: "dashboard" })).resolves.toMatchObject({
       systemStatus: { scheduler: { state: "not_enabled" } },
     });
+  });
+
+  it("Mind 可以决定跳过本轮且不会调用信息来源", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    let collected = false;
+    const now = new Date("2026-08-13T09:00:00.000Z");
+    const desk = createCreatorDesk({
+      database: { check: async () => ({ ready: true }) },
+      mind: {
+        inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "主脑" } }),
+        planAutonomousRun: async () => ({ decisionId: "skip-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "skip" as const, focus: "AI 创作者", reason: "今天没有需要重复扫描的新目标。", requestedDraftCount: 1, usedMemoryIds: [], memoryInfluence: "本轮没有可用记忆。", memoryConflicts: [] }),
+      },
+      workspaceStore: store, profileStore: store, proposalStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
+      signalSource: { collect: async () => { collected = true; return []; } },
+      clock: () => now,
+    });
+    await desk.submit({ commandId: "skip-config", command: { type: "configure_daily_follow_up", enabled: true, mode: "real", platform: "x", outputCount: 3 } });
+    await desk.submit({ commandId: "skip-run", command: { type: "process_due_follow_up" } });
+    expect(collected).toBe(false);
+    expect((await desk.inspect({ view: "dashboard" })).systemStatus.scheduler).toMatchObject({ lastOutcome: "skipped", lastPlan: { decisionId: "skip-decision" } });
+  });
+
+  it("拒绝 Mind 超过用户上限的输出数量", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    const now = new Date("2026-08-13T09:00:00.000Z");
+    const desk = createCreatorDesk({
+      database: { check: async () => ({ ready: true }) },
+      mind: {
+        inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "主脑" } }),
+        planAutonomousRun: async () => ({ decisionId: "overflow-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "scan" as const, focus: "AI", reason: "准备扫描。", requestedDraftCount: 3, usedMemoryIds: [], memoryInfluence: "无记忆", memoryConflicts: [] }),
+      },
+      workspaceStore: store, profileStore: store, proposalStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
+      signalSource: { collect: async () => [] },
+      clock: () => now,
+    });
+    await desk.submit({ commandId: "limit-config", command: { type: "configure_daily_follow_up", enabled: true, mode: "real", platform: "x", outputCount: 2 } });
+    await expect(desk.submit({ commandId: "limit-run", command: { type: "process_due_follow_up" } })).rejects.toThrow("超出用户锁定上限");
   });
 });

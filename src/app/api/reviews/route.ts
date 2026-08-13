@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createAppDesk } from "@/server/create-app-desk";
+import { completeReviewStage } from "@/server/radar-job-runner";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
         reason: parsed.data.reason,
       },
     });
+    completeReviewStage(parsed.data.proposalId, parsed.data.decision);
     return NextResponse.json({ ok: true, receipt });
   } catch (error) {
     const message = error instanceof Error ? error.message : "审核提交失败";

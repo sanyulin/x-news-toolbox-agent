@@ -11,6 +11,7 @@ test-results/
 *.tsbuildinfo
 .impeccable/
 .runtime/
+.scratch/
 
 # 本地智能体工作流配置，不属于比赛源码交付。
 CLAUDE.md

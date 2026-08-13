@@ -106,6 +106,7 @@ export function getEffectiveRuntimeConfig(
 ): RuntimeConfig {
   const stored = loadRuntimeConfig(path);
   const portable = environment.CREATOR_MIND_PORTABLE === "1";
+  const environmentHorizon = !portable ? readHorizonEnvironment(environment) : undefined;
   return {
     builderApiKey: stored.builderApiKey || (!portable ? cleanString(environment.MINDS_BUILDER_API_KEY) : undefined),
     mindId: stored.mindId || (!portable ? cleanString(environment.MINDS_MIND_ID) : undefined),
@@ -118,8 +119,35 @@ export function getEffectiveRuntimeConfig(
     defaultSourceUrl:
       stored.defaultSourceUrl || (!portable ? firstEnvironmentSource(environment.CREATOR_MIND_RSS_FEEDS) : undefined),
     sourceCredentials: stored.sourceCredentials,
-    horizon: stored.horizon,
+    horizon: stored.horizon ?? environmentHorizon,
   };
+}
+
+function readHorizonEnvironment(
+  environment: Record<string, string | undefined>,
+): HorizonRuntimeConfig | undefined {
+  const provider = isHorizonProvider(environment.HORIZON_PROVIDER)
+    ? environment.HORIZON_PROVIDER
+    : undefined;
+  if (!provider) return undefined;
+  return {
+    enabled: readEnvironmentBoolean(environment.HORIZON_ENABLED, true),
+    provider,
+    model: defaultHorizonModel(provider),
+    apiKey: cleanString(environment.HORIZON_API_KEY),
+    baseUrl: cleanString(environment.HORIZON_BASE_URL),
+    azureEndpoint: cleanString(environment.HORIZON_AZURE_ENDPOINT),
+    hours: boundedNumber(Number(environment.HORIZON_HOURS), 1, 168, 24),
+    threshold: boundedNumber(Number(environment.HORIZON_THRESHOLD), 0, 10, 7),
+    hackerNews: readEnvironmentBoolean(environment.HORIZON_HACKER_NEWS, true),
+    ossInsight: readEnvironmentBoolean(environment.HORIZON_OSS_INSIGHT, false),
+    enrich: readEnvironmentBoolean(environment.HORIZON_ENRICH, true),
+  };
+}
+
+function readEnvironmentBoolean(value: string | undefined, fallback: boolean) {
+  if (value === undefined || value === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
 export function toPublicRuntimeConfig(config: RuntimeConfig): PublicRuntimeConfig {

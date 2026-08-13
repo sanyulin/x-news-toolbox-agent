@@ -4,12 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  ["/radar", "信息扫描"],
-  ["/sources", "信息来源"],
-  ["/style", "写作风格"],
-  ["/drafts", "内容草稿"],
-  ["/results", "运行结果"],
-  ["/settings/connections", "连接设置"],
+  ["/inbox", "今日内容"],
+  ["/status", "运行状态"],
+  ["/settings/connections", "设置"],
 ] as const;
 
 export function WorkbenchNav() {

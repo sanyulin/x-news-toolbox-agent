@@ -10,6 +10,10 @@ const requestSchema = z.object({
   commandId: z.string().min(8).max(100),
   enabled: z.boolean(),
   mode: z.enum(["demo", "real"]),
+  platform: z.enum(["x", "xiaohongshu"]),
+  outputCount: z.number().int().min(1).max(5).default(1),
+  focus: z.string().trim().max(240).optional(),
+  dailyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).default("09:00"),
 });
 
 export async function POST(request: Request) {
@@ -28,6 +32,10 @@ export async function POST(request: Request) {
         type: "configure_daily_follow_up",
         enabled: parsed.data.enabled,
         mode: parsed.data.mode,
+        platform: parsed.data.platform,
+        outputCount: parsed.data.outputCount,
+        focus: parsed.data.focus,
+        dailyTime: parsed.data.dailyTime,
       },
     });
     const dashboard = await desk.inspect({ view: "dashboard" });

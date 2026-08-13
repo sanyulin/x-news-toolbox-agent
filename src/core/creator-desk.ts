@@ -26,6 +26,8 @@ export interface CreatorDeskDependencies {
   proposalStore?: ProposalStore;
   publicationStore?: PublicationStore;
   learningStore?: LearningStore;
+  memoryStore?: MemoryStore;
+  platformDraftStore?: PlatformDraftStore;
   schedulerStore?: SchedulerStore;
   signalSource?: SignalSource;
   xConfigured?: boolean;
@@ -39,6 +41,9 @@ export interface MindRadarDecision {
   mindName: string;
   conversationAlias: string;
   rationale: string;
+  usedMemoryIds?: string[];
+  memoryInfluence?: string;
+  memoryConflicts?: string[];
   rankedSignals: Array<{
     signalId: string;
     relevanceScore: number;
@@ -47,24 +52,63 @@ export interface MindRadarDecision {
   }>;
 }
 
+export interface AutonomousRunPlan {
+  decisionId: string;
+  mindId: string;
+  mindName: string;
+  conversationAlias: string;
+  action: "scan" | "skip";
+  focus: string;
+  reason: string;
+  requestedDraftCount: number;
+  usedMemoryIds: string[];
+  memoryInfluence: string;
+  memoryConflicts: string[];
+}
+
 export interface MindAuthority {
   inspect(): Promise<MindInspection>;
+  planAutonomousRun?(input: {
+    asOf: string;
+    profile: CreatorProfile;
+    memories: CreatorMemory[];
+    locked: {
+      platform: PlatformId;
+      maximumDrafts: number;
+      focus?: string;
+    };
+  }): Promise<AutonomousRunPlan>;
   rankRadar?(input: {
     asOf: string;
     profile: CreatorProfile;
     signals: RadarSignal[];
+    memories?: CreatorMemory[];
   }): Promise<MindRadarDecision>;
   draftProposal?(input: ProposalDraftInput): Promise<ProposalMindDecision>;
+  draftPlatform?(input: PlatformDraftInput): Promise<PlatformMindDecision>;
   suggestLearning?(input: LearningDraftInput): Promise<LearningMindDecision>;
+  commitMemory?(memory: CreatorMemory): Promise<void>;
 }
 
 export interface ProposalMindAuthority {
+  planAutonomousRun?(input: {
+    asOf: string;
+    profile: CreatorProfile;
+    memories: CreatorMemory[];
+    locked: {
+      platform: PlatformId;
+      maximumDrafts: number;
+      focus?: string;
+    };
+  }): Promise<AutonomousRunPlan>;
   rankRadar?(input: {
     asOf: string;
     profile: CreatorProfile;
     signals: RadarSignal[];
+    memories?: CreatorMemory[];
   }): Promise<MindRadarDecision>;
   draftProposal(input: ProposalDraftInput): Promise<ProposalMindDecision>;
+  draftPlatform?(input: PlatformDraftInput): Promise<PlatformMindDecision>;
   suggestLearning?(input: LearningDraftInput): Promise<LearningMindDecision>;
 }
 
@@ -72,6 +116,7 @@ export interface CreatorProfile {
   positioning: string;
   audience: string;
   voice: string;
+  boundaries?: string;
   version: number;
   updatedAt: string;
 }
@@ -83,7 +128,7 @@ export interface CreatorProfileStore {
     commandId: string;
     expectedVersion: number;
     updatedAt: string;
-    profile: Pick<CreatorProfile, "positioning" | "audience" | "voice">;
+    profile: Pick<CreatorProfile, "positioning" | "audience" | "voice" | "boundaries">;
   }): Promise<{
     operationId: string;
     profile: CreatorProfile;
@@ -136,10 +181,20 @@ export interface DailyFollowUpJob {
   operationId: string;
   enabled: boolean;
   mode: "demo" | "real";
+  platform: PlatformId;
+  outputCount?: number;
+  focus?: string;
+  dailyTime?: string;
   runState: "idle" | "running" | "failed";
   nextRunAt?: string;
   lastRunAt?: string;
   lastRadarOperationId?: string;
+  lastProposalOperationId?: string;
+  lastPlatformDraftOperationId?: string;
+  lastProposalOperationIds?: string[];
+  lastPlatformDraftOperationIds?: string[];
+  lastPlan?: AutonomousRunPlan;
+  lastOutcome?: "drafted" | "skipped";
   lastError?: string;
   updatedAt: string;
 }
@@ -151,6 +206,10 @@ export interface SchedulerStore {
     commandId: string;
     enabled: boolean;
     mode: "demo" | "real";
+    platform: PlatformId;
+    outputCount?: number;
+    focus?: string;
+    dailyTime?: string;
     now: string;
   }): Promise<{
     operationId: string;
@@ -163,7 +222,13 @@ export interface SchedulerStore {
   completeDailyFollowUp(input: {
     completedAt: string;
     nextRunAt: string;
-    radarOperationId: string;
+    radarOperationId?: string;
+    proposalOperationId?: string;
+    platformDraftOperationId?: string;
+    proposalOperationIds?: string[];
+    platformDraftOperationIds?: string[];
+    plan: AutonomousRunPlan;
+    outcome: "drafted" | "skipped";
   }): Promise<void>;
   failDailyFollowUp(input: {
     failedAt: string;
@@ -214,6 +279,7 @@ export interface ProposalDraftInput {
   signal: RadarSignal;
   evidence: EvidencePacket;
   radarDecision?: MindRadarDecision;
+  memories?: CreatorMemory[];
 }
 
 export interface ProposalMindDecision {
@@ -227,6 +293,53 @@ export interface ProposalMindDecision {
   evidenceVersion: string;
   chineseDraft?: string;
   englishDraft?: string;
+  usedMemoryIds?: string[];
+  memoryInfluence?: string;
+  memoryConflicts?: string[];
+}
+
+export type PlatformId = "x" | "xiaohongshu";
+
+export interface PlatformDraftInput extends ProposalDraftInput {
+  platform: PlatformId;
+  proposalId: string;
+  revision?: { attempt: number; errors: string[] };
+}
+
+export interface PlatformMindDecision {
+  decisionId: string;
+  mindId: string;
+  mindName: string;
+  conversationAlias: string;
+  evidenceVersion: string;
+  body: string;
+  title?: string;
+  hashtags: string[];
+  coverText?: string;
+  visualBrief?: string[];
+  evidenceRefs: string[];
+  usedMemoryIds: string[];
+  memoryInfluence: string;
+  memoryConflicts?: string[];
+}
+
+export interface PlatformDraft extends PlatformMindDecision {
+  operationId: string;
+  commandId: string;
+  proposalId: string;
+  platform: PlatformId;
+  createdAt: string;
+  revisionCount: number;
+  editedByCreator?: boolean;
+  validation: { valid: boolean; errors: string[]; warnings: string[] };
+}
+
+export interface PlatformDraftStore {
+  findPlatformDraftByCommandId(commandId: string): Promise<PlatformDraft | undefined>;
+  savePlatformDraft(draft: PlatformDraft): Promise<void>;
+  getLatestPlatformDraft(): Promise<PlatformDraft | undefined>;
+  listPlatformDrafts?(limit?: number): Promise<PlatformDraft[]>;
+  getPlatformDraftById?(operationId: string): Promise<PlatformDraft | undefined>;
 }
 
 export interface ContentProposal {
@@ -264,6 +377,8 @@ export interface ProposalStore {
   findProposalByCommandId(commandId: string): Promise<ContentProposal | undefined>;
   saveProposal(proposal: ContentProposal): Promise<void>;
   getLatestProposal(): Promise<ContentProposal | undefined>;
+  listProposals?(limit?: number): Promise<ContentProposal[]>;
+  getProposalById?(operationId: string): Promise<ContentProposal | undefined>;
   reviewProposal(input: {
     operationId: string;
     commandId: string;
@@ -305,7 +420,7 @@ export interface PublicationLink {
   proposalId: string;
   proposalVersion: number;
   mode: "demo" | "real";
-  platform: "x";
+  platform: PlatformId;
   source: "manual_entry";
   postUrl: string;
   actualText: string;
@@ -324,6 +439,7 @@ export interface PublicationStore {
     disposition: "accepted" | "duplicate";
   }>;
   getLatestPublication(): Promise<PublicationLink | undefined>;
+  getPublicationById?(operationId: string): Promise<PublicationLink | undefined>;
 }
 
 export interface LearningDraftInput {
@@ -359,12 +475,37 @@ export interface LearningUpdate {
   };
   mindDecision: LearningMindDecision;
   memoryText: string;
+  scope?: "global" | PlatformId;
+}
+
+export interface CreatorMemory {
+  memoryId: string;
+  scope: "global" | PlatformId;
+  text: string;
+  sourcePublicationId: string;
+  sourceProposalId?: string;
+  sourceMetrics: MetricSnapshot;
+  confidence: "low" | "medium" | "high";
+  status: "proposed" | "accepted" | "superseded" | "deleted";
+  createdAt: string;
+  acceptedAt?: string;
+  lastAppliedAt?: string;
+  applicationCount: number;
+  synthetic: boolean;
+}
+
+export interface MemoryStore {
+  listMemories(input?: { scope?: "global" | PlatformId; status?: CreatorMemory["status"] }): Promise<CreatorMemory[]>;
+  saveMemory(memory: CreatorMemory): Promise<void>;
+  markMemoriesApplied(input: { memoryIds: string[]; appliedAt: string }): Promise<void>;
+  updateMemory(input: { memoryId: string; status: CreatorMemory["status"]; text?: string; acceptedAt?: string }): Promise<CreatorMemory>;
 }
 
 export interface LearningStore {
   findLearningByCommandId(commandId: string): Promise<LearningUpdate | undefined>;
   saveLearning(update: LearningUpdate): Promise<void>;
   getLatestLearning(): Promise<LearningUpdate | undefined>;
+  getLearningById?(operationId: string): Promise<LearningUpdate | undefined>;
   updateLearning(input: {
     operationId: string;
     commandId: string;
@@ -413,6 +554,18 @@ export interface DashboardView {
   latestProposal?: Omit<ContentProposal, "commandId">;
   latestPublication?: Omit<PublicationLink, "commandId">;
   latestLearning?: Omit<LearningUpdate, "commandId">;
+  latestPlatformDraft?: Omit<PlatformDraft, "commandId">;
+  memories: CreatorMemory[];
+  causalChain?: {
+    memory: CreatorMemory;
+    sourceProposal: Omit<ContentProposal, "commandId">;
+    sourcePublication: Omit<PublicationLink, "commandId">;
+    sourceLearning: Omit<LearningUpdate, "commandId">;
+  };
+  autonomyEvidence?: {
+    proposal: Omit<ContentProposal, "commandId">;
+    platformDraft: Omit<PlatformDraft, "commandId">;
+  };
   competitionProof: CompetitionProof;
 }
 
@@ -432,6 +585,7 @@ export interface CompetitionProof {
   expression: CompetitionProofStage;
   learning: CompetitionProofStage;
   autonomy: CompetitionProofStage;
+  memoryCausality: CompetitionProofStage;
 }
 
 export interface CreatorDesk {
@@ -451,11 +605,27 @@ export interface CreatorDesk {
           positioning: string;
           audience: string;
           voice: string;
+          boundaries?: string;
         }
       | {
           type: "prepare_proposal";
           signalId: string;
+          proposalMode: "demo" | "mind" | "evidence";
+        }
+      | {
+          type: "prepare_platform_draft";
+          proposalId: string;
+          platform: PlatformId;
           proposalMode: "demo" | "mind";
+        }
+      | {
+          type: "edit_platform_draft";
+          draftId: string;
+          body: string;
+          title?: string;
+          hashtags: string[];
+          coverText?: string;
+          visualBrief?: string[];
         }
       | {
           type: "review_proposal";
@@ -469,6 +639,7 @@ export interface CreatorDesk {
           proposalId: string;
           expectedProposalVersion: number;
           mode: "demo" | "real";
+          platform?: PlatformId;
           postUrl: string;
           actualText: string;
           publishedAt: string;
@@ -490,6 +661,10 @@ export interface CreatorDesk {
           type: "configure_daily_follow_up";
           enabled: boolean;
           mode: "demo" | "real";
+          platform: PlatformId;
+          outputCount?: number;
+          focus?: string;
+          dailyTime?: string;
         }
       | {
           type: "process_due_follow_up";
@@ -500,6 +675,7 @@ export interface CreatorDesk {
     disposition: "accepted" | "duplicate";
     status: "completed";
     profile?: CreatorProfile;
+    mindDecision?: MindRadarDecision;
   }>;
   inspect(query: { view: "dashboard" }): Promise<DashboardView>;
 }
@@ -524,6 +700,7 @@ export function createCreatorDesk(
             positioning: input.command.positioning,
             audience: input.command.audience,
             voice: input.command.voice,
+            boundaries: input.command.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
           },
         });
         return {
@@ -551,6 +728,10 @@ export function createCreatorDesk(
           commandId: input.commandId,
           enabled: input.command.enabled,
           mode: input.command.mode,
+          platform: input.command.platform,
+          outputCount: input.command.outputCount,
+          focus: input.command.focus,
+          dailyTime: input.command.dailyTime,
           now,
         });
         return {
@@ -578,8 +759,48 @@ export function createCreatorDesk(
           };
         }
 
-        const nextRunAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+        const nextRunAt = nextDailyRun(now, claimed.job.dailyTime);
         try {
+          const [profile, memories] = await Promise.all([
+            dependencies.profileStore?.getCreatorProfile(),
+            dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? [],
+          ]);
+          const planningMind = claimed.job.mode === "real" ? dependencies.mind : dependencies.demoMind;
+          if (!planningMind?.planAutonomousRun) {
+            throw new Error(claimed.job.mode === "real" ? "核心 Mind 尚未配置自动编排能力" : "演示 Mind 尚未配置自动编排能力");
+          }
+          const maximumDrafts = Math.max(1, Math.min(5, claimed.job.outputCount ?? 1));
+          const plan = await planningMind.planAutonomousRun({
+            asOf: now.toISOString(),
+            profile: profile ?? defaultCreatorProfile(claimed.job.focus),
+            memories,
+            locked: {
+              platform: claimed.job.platform,
+              maximumDrafts,
+              focus: claimed.job.focus,
+            },
+          });
+          validateMemoryUsage(plan.usedMemoryIds, memories);
+          if (plan.requestedDraftCount < 1 || plan.requestedDraftCount > maximumDrafts) {
+            throw new Error("Mind 请求的草稿数量超出用户锁定上限");
+          }
+          if (plan.usedMemoryIds.length) {
+            await dependencies.memoryStore?.markMemoriesApplied({ memoryIds: plan.usedMemoryIds, appliedAt: now.toISOString() });
+          }
+          if (plan.action === "skip") {
+            await dependencies.schedulerStore.completeDailyFollowUp({
+              completedAt: now.toISOString(),
+              nextRunAt,
+              plan,
+              outcome: "skipped",
+            });
+            return {
+              operationId: plan.decisionId,
+              commandId: input.commandId,
+              disposition: "accepted",
+              status: "completed",
+            };
+          }
           const result = await desk.submit({
             commandId: `daily-radar:${claimed.scheduledFor}`,
             command: {
@@ -591,12 +812,41 @@ export function createCreatorDesk(
                   : "demo_only",
               decisionMode:
                 claimed.job.mode === "real" ? "mind" : "demo_mind",
+              focus: plan.focus,
             },
           });
+          const radar = (await desk.inspect({ view: "dashboard" })).latestRadar;
+          const selected = radar?.signals.filter((candidate) => candidate.recommendation === "write").slice(0, plan.requestedDraftCount) ?? [];
+          if (!radar || !selected.length) throw new Error("Mind 本轮没有选择适合进入审核的候选信号");
+          const proposalOperationIds: string[] = [];
+          const platformDraftOperationIds: string[] = [];
+          for (const [index, signal] of selected.entries()) {
+            const proposalResult = await desk.submit({
+              commandId: `daily-proposal:${claimed.scheduledFor}:${index}`,
+              command: { type: "prepare_proposal", signalId: signal.id, proposalMode: "evidence" },
+            });
+            const platformResult = await desk.submit({
+              commandId: `daily-platform:${claimed.scheduledFor}:${index}`,
+              command: {
+                type: "prepare_platform_draft",
+                proposalId: proposalResult.operationId,
+                platform: claimed.job.platform ?? "x",
+                proposalMode: claimed.job.mode === "real" ? "mind" : "demo",
+              },
+            });
+            proposalOperationIds.push(proposalResult.operationId);
+            platformDraftOperationIds.push(platformResult.operationId);
+          }
           await dependencies.schedulerStore.completeDailyFollowUp({
             completedAt: now.toISOString(),
             nextRunAt,
             radarOperationId: result.operationId,
+            proposalOperationId: proposalOperationIds.at(-1),
+            platformDraftOperationId: platformDraftOperationIds.at(-1),
+            proposalOperationIds,
+            platformDraftOperationIds,
+            plan,
+            outcome: "drafted",
           });
           return {
             ...result,
@@ -633,9 +883,10 @@ export function createCreatorDesk(
           };
         }
 
-        const [radar, storedProfile] = await Promise.all([
+        const [radar, storedProfile, memories] = await Promise.all([
           dependencies.workspaceStore.getLatestRadarRun(),
           dependencies.profileStore.getCreatorProfile(),
+          dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? [],
         ]);
         if (!radar) throw new Error("请先运行今日雷达");
         const profile = storedProfile ?? defaultCreatorProfile();
@@ -691,37 +942,64 @@ export function createCreatorDesk(
                   : "当前仅有单一来源，发布前建议交叉核验",
           ],
         };
-        const authority =
-          input.command.proposalMode === "demo"
+        let decision: ProposalMindDecision;
+        if (input.command.proposalMode === "evidence") {
+          const radarDecision = radar.mindDecision;
+          const rankedSignal = radarDecision?.rankedSignals.find((candidate) => candidate.signalId === signal.id);
+          if (!radarDecision || !rankedSignal) throw new Error("最新雷达缺少可核验的 Mind 选题决策");
+          decision = {
+            decisionId: radarDecision.decisionId,
+            mindId: radarDecision.mindId,
+            mindName: radarDecision.mindName,
+            conversationAlias: radarDecision.conversationAlias,
+            goNoGo: rankedSignal.recommendation === "skip" ? "no_go" : "go",
+            reason: rankedSignal.why,
+            angle: rankedSignal.why,
+            evidenceVersion,
+            usedMemoryIds: radarDecision.usedMemoryIds ?? [],
+            memoryInfluence: radarDecision.memoryInfluence ?? "选题阶段未报告长期记忆影响。",
+            memoryConflicts: radarDecision.memoryConflicts ?? [],
+          };
+        } else {
+          const authority = input.command.proposalMode === "demo"
             ? dependencies.demoMind
             : dependencies.mind.draftProposal
               ? dependencies.mind
               : undefined;
-        if (!authority?.draftProposal) {
-          throw new Error(
-            input.command.proposalMode === "demo"
-              ? "演示 Mind 尚未配置"
-              : "核心 Mind 尚未配置内容建议能力",
-          );
+          if (!authority?.draftProposal) {
+            throw new Error(
+              input.command.proposalMode === "demo"
+                ? "演示 Mind 尚未配置"
+                : "核心 Mind 尚未配置内容建议能力",
+            );
+          }
+          decision = await authority.draftProposal({
+            asOf: now,
+            profile,
+            signal,
+            evidence,
+            radarDecision: radar.mindDecision,
+            memories,
+          });
         }
-
-        const decision = await authority.draftProposal({
-          asOf: now,
-          profile,
-          signal,
-          evidence,
-          radarDecision: radar.mindDecision,
-        });
         if (decision.evidenceVersion !== evidence.version) {
           throw new Error("Mind 返回的证据版本与本轮不一致");
         }
         if (
+          input.command.proposalMode !== "evidence" &&
           decision.goNoGo === "go" &&
           (!decision.chineseDraft ||
             !decision.englishDraft ||
             decision.chineseDraft.trim() === decision.englishDraft.trim())
         ) {
           throw new Error("Mind 未返回合格的中英独立草稿");
+        }
+        validateMemoryUsage(decision.usedMemoryIds ?? [], memories);
+        if (input.command.proposalMode !== "evidence" && decision.usedMemoryIds?.length) {
+          await dependencies.memoryStore?.markMemoriesApplied({
+            memoryIds: decision.usedMemoryIds,
+            appliedAt: now,
+          });
         }
 
         const proposal: ContentProposal = {
@@ -751,6 +1029,80 @@ export function createCreatorDesk(
           disposition: "accepted",
           status: "completed",
         };
+      }
+
+      if (input.command.type === "prepare_platform_draft") {
+        if (!dependencies.proposalStore || !dependencies.platformDraftStore) {
+          throw new Error("平台文案尚未配置");
+        }
+        const existing = await dependencies.platformDraftStore.findPlatformDraftByCommandId(input.commandId);
+        if (existing) return { operationId: existing.operationId, commandId: input.commandId, disposition: "duplicate", status: "completed" };
+        const proposal = await dependencies.proposalStore.getLatestProposal();
+        if (!proposal || proposal.operationId !== input.command.proposalId) throw new Error("内容建议不存在或不是最新版本");
+        const profile = (await dependencies.profileStore?.getCreatorProfile()) ?? defaultCreatorProfile();
+        const memories = await (dependencies.memoryStore?.listMemories({ scope: input.command.platform, status: "accepted" }) ?? Promise.resolve([]));
+        const authority = input.command.proposalMode === "demo" ? dependencies.demoMind : dependencies.mind;
+        if (!authority?.draftPlatform) throw new Error(input.command.proposalMode === "demo" ? "演示 Mind 尚未配置平台写作能力" : "核心 Mind 尚未配置平台写作能力");
+        let decision: PlatformMindDecision | undefined;
+        let validation = { valid: false, errors: ["尚未生成"], warnings: [] as string[] };
+        let revisionCount = 0;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          revisionCount = attempt;
+          decision = await authority.draftPlatform({
+            asOf: (dependencies.clock ?? (() => new Date()))().toISOString(),
+            profile,
+            signal: proposal.signal,
+            evidence: proposal.evidence,
+            radarDecision: proposal.radarProof?.mindDecision,
+            memories,
+            platform: input.command.platform,
+            proposalId: proposal.operationId,
+            revision: attempt ? { attempt, errors: validation.errors } : undefined,
+          });
+          validateMemoryUsage(decision.usedMemoryIds, memories);
+          validation = validatePlatformDraft(input.command.platform, decision, proposal.evidence);
+          if (validation.valid) break;
+        }
+        if (!decision) throw new Error("Mind 未返回平台文案");
+        const createdAt = (dependencies.clock ?? (() => new Date()))().toISOString();
+        const draft: PlatformDraft = {
+          ...decision,
+          operationId: newId(),
+          commandId: input.commandId,
+          proposalId: proposal.operationId,
+          platform: input.command.platform,
+          createdAt,
+          revisionCount,
+          validation,
+        };
+        await dependencies.platformDraftStore.savePlatformDraft(draft);
+        if (decision.usedMemoryIds.length) await dependencies.memoryStore?.markMemoriesApplied({ memoryIds: decision.usedMemoryIds, appliedAt: createdAt });
+        return { operationId: draft.operationId, commandId: input.commandId, disposition: "accepted", status: "completed" };
+      }
+
+      if (input.command.type === "edit_platform_draft") {
+        if (!dependencies.proposalStore || !dependencies.platformDraftStore) throw new Error("平台文案尚未配置");
+        const existing = await dependencies.platformDraftStore.findPlatformDraftByCommandId(input.commandId);
+        if (existing) return { operationId: existing.operationId, commandId: input.commandId, disposition: "duplicate", status: "completed" };
+        const [draft, proposal] = await Promise.all([dependencies.platformDraftStore.getLatestPlatformDraft(), dependencies.proposalStore.getLatestProposal()]);
+        if (!draft || draft.operationId !== input.command.draftId || !proposal || proposal.operationId !== draft.proposalId) throw new Error("平台文案不存在或不是最新版本");
+        const operationId = newId();
+        const edited: PlatformDraft = {
+          ...draft,
+          operationId,
+          commandId: input.commandId,
+          createdAt: (dependencies.clock ?? (() => new Date()))().toISOString(),
+          body: input.command.body.trim(),
+          title: input.command.title?.trim() || undefined,
+          hashtags: input.command.hashtags.map((tag) => tag.trim()).filter(Boolean),
+          coverText: input.command.coverText?.trim() || undefined,
+          visualBrief: input.command.visualBrief?.map((item) => item.trim()).filter(Boolean),
+          revisionCount: draft.revisionCount + 1,
+          editedByCreator: true,
+        };
+        edited.validation = validatePlatformDraft(edited.platform, edited, proposal.evidence);
+        await dependencies.platformDraftStore.savePlatformDraft(edited);
+        return { operationId, commandId: input.commandId, disposition: "accepted", status: "completed" };
       }
 
       if (input.command.type === "review_proposal") {
@@ -822,7 +1174,7 @@ export function createCreatorDesk(
           proposalId: input.command.proposalId,
           proposalVersion: input.command.expectedProposalVersion,
           mode: input.command.mode,
-          platform: "x",
+          platform: input.command.platform ?? "x",
           source: "manual_entry",
           postUrl: input.command.postUrl,
           actualText: input.command.actualText,
@@ -926,6 +1278,21 @@ export function createCreatorDesk(
           memoryText: decision.suggestedMemory,
         };
         await dependencies.learningStore.saveLearning(update);
+        if (dependencies.memoryStore) {
+          await dependencies.memoryStore.saveMemory({
+            memoryId: operationId,
+            scope: update.scope ?? publication.platform,
+            text: update.memoryText,
+            sourcePublicationId: publication.operationId,
+            sourceProposalId: publication.proposalId,
+            sourceMetrics: publication.metrics,
+            confidence: decision.confidence,
+            status: "proposed",
+            createdAt,
+            applicationCount: 0,
+            synthetic: update.synthetic,
+          });
+        }
         return {
           operationId,
           commandId: input.commandId,
@@ -944,6 +1311,7 @@ export function createCreatorDesk(
         ) {
           throw new Error("编辑学习记忆时必须提供新内容");
         }
+        const updatedAt = (dependencies.clock ?? (() => new Date()))().toISOString();
         const result = await dependencies.learningStore.updateLearning({
           operationId: newId(),
           commandId: input.commandId,
@@ -951,8 +1319,43 @@ export function createCreatorDesk(
           expectedVersion: input.command.expectedVersion,
           action: input.command.action,
           memoryText: input.command.memoryText?.trim(),
-          updatedAt: (dependencies.clock ?? (() => new Date()))().toISOString(),
+          updatedAt,
         });
+        if ((input.command.action === "accept" || input.command.action === "edit") && result.update.status === "accepted" && dependencies.memoryStore) {
+          const publication = await dependencies.publicationStore?.getLatestPublication();
+          if (publication && publication.operationId === result.update.publicationId) {
+            const existingMemory = (await dependencies.memoryStore.listMemories()).find((memory) => memory.memoryId === result.update.operationId);
+            const memory = existingMemory
+              ? await dependencies.memoryStore.updateMemory({
+                  memoryId: existingMemory.memoryId,
+                  status: "accepted",
+                  text: result.update.memoryText,
+                  acceptedAt: existingMemory.acceptedAt ?? updatedAt,
+                })
+              : {
+                  memoryId: result.update.operationId,
+                  scope: result.update.scope ?? publication.platform,
+                  text: result.update.memoryText,
+                  sourcePublicationId: publication.operationId,
+                  sourceProposalId: publication.proposalId,
+                  sourceMetrics: publication.metrics,
+                  confidence: result.update.mindDecision.confidence,
+                  status: "accepted" as const,
+                  createdAt: result.update.createdAt,
+                  acceptedAt: updatedAt,
+                  applicationCount: 0,
+                  synthetic: result.update.synthetic,
+                };
+            if (!existingMemory) await dependencies.memoryStore.saveMemory(memory);
+            if (!memory.synthetic) await dependencies.mind.commitMemory?.(memory);
+          }
+        } else if (input.command.action === "delete" && dependencies.memoryStore) {
+          const matching = (await dependencies.memoryStore.listMemories()).find((memory) => memory.memoryId === result.update.operationId);
+          if (matching) {
+            const deleted = await dependencies.memoryStore.updateMemory({ memoryId: matching.memoryId, status: "deleted" });
+            if (!deleted.synthetic) await dependencies.mind.commitMemory?.(deleted);
+          }
+        }
         return {
           operationId: result.operationId,
           commandId: input.commandId,
@@ -1017,11 +1420,15 @@ export function createCreatorDesk(
           );
         }
 
+        const memories = await (dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? Promise.resolve([]));
         mindDecision = await rankingMind.rankRadar({
           asOf: now.toISOString(),
           profile,
           signals: collectedSignals,
+          memories,
         });
+        validateMemoryUsage(mindDecision.usedMemoryIds ?? [], memories);
+        if (mindDecision.usedMemoryIds?.length) await dependencies.memoryStore?.markMemoriesApplied({ memoryIds: mindDecision.usedMemoryIds, appliedAt: now.toISOString() });
         const byId = new Map(collectedSignals.map((signal) => [signal.id, signal]));
         const seen = new Set<string>();
         uniqueSignals = mindDecision.rankedSignals.map((ranked) => {
@@ -1066,6 +1473,7 @@ export function createCreatorDesk(
         commandId: run.commandId,
         disposition: "accepted",
         status: "completed",
+        mindDecision,
       };
     },
 
@@ -1081,6 +1489,8 @@ export function createCreatorDesk(
         latestProposal,
         latestPublication,
         latestLearning,
+        latestPlatformDraft,
+        memories,
         dailyFollowUp,
       ] = await Promise.all([
         dependencies.database.check(),
@@ -1089,15 +1499,44 @@ export function createCreatorDesk(
         dependencies.proposalStore?.getLatestProposal(),
         dependencies.publicationStore?.getLatestPublication(),
         dependencies.learningStore?.getLatestLearning(),
+        dependencies.platformDraftStore?.getLatestPlatformDraft(),
+        dependencies.memoryStore?.listMemories() ?? [],
         dependencies.schedulerStore?.getDailyFollowUp(),
       ]);
       const latestRadar = await dependencies.workspaceStore?.getLatestRadarRun();
+      const causalMemory = memories.find((memory) => memory.status === "accepted" && memory.applicationCount > 0 && !memory.synthetic);
+      const [sourceProposal, sourcePublication, sourceLearning] = causalMemory
+        ? await Promise.all([
+            causalMemory.sourceProposalId ? dependencies.proposalStore?.getProposalById?.(causalMemory.sourceProposalId) : undefined,
+            dependencies.publicationStore?.getPublicationById?.(causalMemory.sourcePublicationId),
+            dependencies.learningStore?.getLearningById?.(causalMemory.memoryId),
+          ])
+        : [];
+      const causalChain = causalMemory && sourceProposal && sourcePublication && sourceLearning
+        ? { memory: causalMemory, sourceProposal: omitCommandId(sourceProposal), sourcePublication: omitCommandId(sourcePublication), sourceLearning: omitCommandId(sourceLearning) }
+        : undefined;
+      const causalProofChain = causalMemory && sourceProposal && sourcePublication && sourceLearning
+        ? { memory: causalMemory, sourceProposal, sourcePublication, sourceLearning }
+        : undefined;
+      const [autonomyProposal, autonomyDraft] = dailyFollowUp?.lastProposalOperationId && dailyFollowUp.lastPlatformDraftOperationId
+        ? await Promise.all([
+            dependencies.proposalStore?.getProposalById?.(dailyFollowUp.lastProposalOperationId),
+            dependencies.platformDraftStore?.getPlatformDraftById?.(dailyFollowUp.lastPlatformDraftOperationId),
+          ])
+        : [];
+      const autonomyEvidence = autonomyProposal && autonomyDraft
+        ? { proposal: omitCommandId(autonomyProposal), platformDraft: omitCommandId(autonomyDraft) }
+        : undefined;
       const competitionProof = buildCompetitionProof({
         latestRadar,
         latestProposal,
         latestPublication,
         latestLearning,
+        latestPlatformDraft,
+        memories,
         dailyFollowUp,
+        causalChain: causalProofChain,
+        autonomyEvidence: autonomyProposal && autonomyDraft ? { proposal: autonomyProposal, platformDraft: autonomyDraft } : undefined,
         generatedAt: (dependencies.clock ?? (() => new Date()))().toISOString(),
       });
 
@@ -1140,10 +1579,20 @@ export function createCreatorDesk(
                     ? "真实每日跟进已启用"
                     : "演示每日跟进已启用",
                 mode: dailyFollowUp.mode,
+                platform: dailyFollowUp.platform ?? "x",
                 runState: dailyFollowUp.runState,
                 nextRunAt: dailyFollowUp.nextRunAt,
                 lastRunAt: dailyFollowUp.lastRunAt,
                 lastRadarOperationId: dailyFollowUp.lastRadarOperationId,
+                lastProposalOperationId: dailyFollowUp.lastProposalOperationId,
+                lastPlatformDraftOperationId: dailyFollowUp.lastPlatformDraftOperationId,
+                lastProposalOperationIds: dailyFollowUp.lastProposalOperationIds,
+                lastPlatformDraftOperationIds: dailyFollowUp.lastPlatformDraftOperationIds,
+                lastPlan: dailyFollowUp.lastPlan,
+                lastOutcome: dailyFollowUp.lastOutcome,
+                outputCount: dailyFollowUp.outputCount,
+                focus: dailyFollowUp.focus,
+                dailyTime: dailyFollowUp.dailyTime,
                 lastError: dailyFollowUp.lastError,
               }
             : { state: "not_enabled", label: "每日调度未启用" },
@@ -1194,6 +1643,12 @@ export function createCreatorDesk(
               memoryText: latestLearning.memoryText,
             }
           : undefined,
+        latestPlatformDraft: latestPlatformDraft
+          ? omitCommandId(latestPlatformDraft)
+          : undefined,
+        memories,
+        causalChain,
+        autonomyEvidence,
         competitionProof,
         latestRadar: latestRadar
           ? {
@@ -1219,9 +1674,44 @@ function defaultCreatorProfile(focus?: string): CreatorProfile {
     positioning: focus?.trim() || "聚焦科技、AI 与商业的可信内容",
     audience: "希望快速理解行业变化的创作者与专业读者",
     voice: "专业、简洁、证据优先",
+    boundaries: "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
     version: 0,
     updatedAt: "1970-01-01T00:00:00.000Z",
   };
+}
+
+function omitCommandId<T extends { commandId: string }>(value: T): Omit<T, "commandId"> {
+  const { commandId: _commandId, ...rest } = value;
+  return rest;
+}
+
+function validateMemoryUsage(memoryIds: string[], available: CreatorMemory[]) {
+  const allowed = new Set(available.filter((memory) => memory.status === "accepted").map((memory) => memory.memoryId));
+  if (memoryIds.some((memoryId) => !allowed.has(memoryId))) {
+    throw new Error("Mind 返回了未知或未批准的记忆标识");
+  }
+}
+
+function validatePlatformDraft(platform: PlatformId, draft: PlatformMindDecision, evidence: EvidencePacket) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (draft.evidenceVersion !== evidence.version) errors.push("平台文案使用了错误的证据版本");
+  if (!draft.evidenceRefs.length) errors.push("必须保留至少一个证据引用");
+  const knownEvidence = new Set(evidence.sources.map((source) => source.id));
+  if (draft.evidenceRefs.some((reference) => !knownEvidence.has(reference))) errors.push("平台文案包含未知证据引用");
+  if (platform === "x") {
+    if (draft.body.length > 280) errors.push("X 正文超过 280 字符");
+    if (!/[。！？.!?]$/u.test(draft.body.trim())) errors.push("X 正文必须以完整句子结束");
+  } else {
+    if (!draft.title?.trim()) errors.push("小红书必须包含标题");
+    if ((draft.title?.length ?? 0) > 20) errors.push("小红书标题超过 20 个字符");
+    if (draft.body.length > 1000) errors.push("小红书正文超过 1000 个字符");
+    if (!draft.coverText?.trim()) errors.push("小红书必须包含封面文案");
+    if (!draft.visualBrief || draft.visualBrief.length < 2 || draft.visualBrief.length > 4) errors.push("小红书必须包含 2–4 条图片建议");
+    if (draft.hashtags.length > 10) errors.push("小红书标签不能超过 10 个");
+  }
+  if (!draft.usedMemoryIds.length) warnings.push("本轮没有使用已确认的创作者记忆");
+  return { valid: errors.length === 0, errors, warnings };
 }
 
 function buildCompetitionProof(input: {
@@ -1229,7 +1719,11 @@ function buildCompetitionProof(input: {
   latestProposal?: ContentProposal;
   latestPublication?: PublicationLink;
   latestLearning?: LearningUpdate;
+  latestPlatformDraft?: PlatformDraft;
+  memories: CreatorMemory[];
   dailyFollowUp?: DailyFollowUpJob;
+  causalChain?: { memory: CreatorMemory; sourceProposal: ContentProposal; sourcePublication: PublicationLink; sourceLearning: LearningUpdate };
+  autonomyEvidence?: { proposal: ContentProposal; platformDraft: PlatformDraft };
   generatedAt: string;
 }): CompetitionProof {
   const selectionSource = input.latestProposal
@@ -1262,46 +1756,62 @@ function buildCompetitionProof(input: {
         detail: "请连接核心 Mind，并用“运行真实来源”生成一次雷达。",
       };
 
-  const expression: CompetitionProofStage = input.latestProposal?.radarProof
+  const expressionSource = input.latestPlatformDraft;
+  const expressionIsLinked = Boolean(
+    input.latestProposal?.radarProof &&
+      expressionSource &&
+      expressionSource.proposalId === input.latestProposal.operationId &&
+      expressionSource.evidenceVersion === input.latestProposal.evidence.version,
+  );
+  const expressionIsDemo = Boolean(
+    expressionIsLinked &&
+      input.latestProposal &&
+      expressionSource &&
+      (input.latestProposal.synthetic ||
+        input.latestProposal.radarProof?.mode !== "live" ||
+        input.latestProposal.radarProof?.decisionMode !== "mind" ||
+        expressionSource.mindId === "recorded-demo-mind"),
+  );
+  const expressionIsVerified = Boolean(
+    expressionIsLinked && !expressionIsDemo && expressionSource?.validation.valid,
+  );
+  const expression: CompetitionProofStage = input.latestProposal && expressionSource && expressionIsLinked
     ? {
-        status:
-          !input.latestProposal.synthetic &&
-          input.latestProposal.mindDecision.mindId !== "recorded-demo-mind"
-            ? "verified"
-            : "demo",
-        label:
-          !input.latestProposal.synthetic &&
-          input.latestProposal.mindDecision.mindId !== "recorded-demo-mind"
-            ? "真实 Mind 已参与表达"
-            : "仅有演示表达证据",
-        detail:
-          !input.latestProposal.synthetic &&
-          input.latestProposal.mindDecision.mindId !== "recorded-demo-mind"
-            ? `中英建议绑定证据版本 ${input.latestProposal.evidence.version}。`
-            : "当前建议包含演示来源或 Recorded Mind 输出，不可作为真实调用证明。",
-        decisionId: input.latestProposal.mindDecision.decisionId,
-        mindName: input.latestProposal.mindDecision.mindName,
-        conversationAlias: input.latestProposal.mindDecision.conversationAlias,
+        status: expressionIsVerified ? "verified" : expressionIsDemo ? "demo" : "missing",
+        label: expressionIsVerified ? "真实 Mind 已参与表达" : expressionIsDemo ? "仅有演示表达证据" : "平台草稿未通过校验",
+        detail: expressionIsVerified
+          ? `${expressionSource.platform === "x" ? "X" : "小红书"}文案绑定证据版本 ${input.latestProposal.evidence.version}。`
+          : expressionIsDemo
+            ? "当前建议包含演示来源或 Recorded Mind 输出，不可作为真实调用证明。"
+            : `当前真实草稿仍有校验错误：${expressionSource.validation.errors.join("；")}`,
+        decisionId: expressionSource.decisionId,
+        mindName: expressionSource.mindName,
+        conversationAlias: expressionSource.conversationAlias,
       }
     : {
         status: "missing",
         label: "缺少 Mind 表达证据",
         detail: input.latestProposal
-          ? "现有内容建议没有绑定选题记录，请重新从雷达生成。"
-          : "请从真实 Mind 排序后的信号生成一份内容建议。",
+          ? expressionSource
+            ? "最近平台草稿不属于当前内容建议，请为当前建议重新生成。"
+            : "请从内容建议生成一份经过校验的平台文案。"
+          : "请从真实 Mind 排序后的信号生成内容建议和平台文案。",
       };
 
+  const learningUpdate = input.causalChain?.sourceLearning ?? input.latestLearning;
+  const learningProposal = input.causalChain?.sourceProposal ?? input.latestProposal;
+  const learningPublication = input.causalChain?.sourcePublication ?? input.latestPublication;
   const activeLearning =
-    input.latestLearning && input.latestLearning.status !== "deleted"
-      ? input.latestLearning
+    learningUpdate && learningUpdate.status !== "deleted"
+      ? learningUpdate
       : undefined;
   const learningIsLinked = Boolean(
     activeLearning &&
-      input.latestProposal &&
-      input.latestPublication &&
-      activeLearning.proposalId === input.latestProposal.operationId &&
-      activeLearning.publicationId === input.latestPublication.operationId &&
-      input.latestPublication.proposalId === input.latestProposal.operationId,
+      learningProposal &&
+      learningPublication &&
+      activeLearning.proposalId === learningProposal.operationId &&
+      activeLearning.publicationId === learningPublication.operationId &&
+      learningPublication.proposalId === learningProposal.operationId,
   );
   const learning: CompetitionProofStage = activeLearning && learningIsLinked
     ? {
@@ -1329,33 +1839,114 @@ function buildCompetitionProof(input: {
           : "请关联真实发布结果，让核心 Mind 提议并由用户确认记忆。",
       };
 
-  const autonomy: CompetitionProofStage =
+  const autonomyIsLinked = Boolean(
     input.dailyFollowUp?.enabled &&
     input.dailyFollowUp.lastRunAt &&
     input.dailyFollowUp.lastRadarOperationId &&
-    !input.dailyFollowUp.lastError
+    input.dailyFollowUp.lastProposalOperationId &&
+    input.dailyFollowUp.lastPlatformDraftOperationId &&
+    input.autonomyEvidence?.proposal.operationId === input.dailyFollowUp.lastProposalOperationId &&
+    input.autonomyEvidence.platformDraft.operationId === input.dailyFollowUp.lastPlatformDraftOperationId &&
+    input.autonomyEvidence.platformDraft.proposalId === input.autonomyEvidence.proposal.operationId &&
+    input.autonomyEvidence.platformDraft.evidenceVersion === input.autonomyEvidence.proposal.evidence.version &&
+    !input.dailyFollowUp.lastError,
+  );
+  const autonomyIsReal = Boolean(
+    autonomyIsLinked &&
+      input.dailyFollowUp?.mode === "real" &&
+      input.autonomyEvidence &&
+      !input.autonomyEvidence.proposal.synthetic &&
+      input.autonomyEvidence.proposal.radarProof?.mode === "live" &&
+      input.autonomyEvidence.proposal.radarProof?.decisionMode === "mind" &&
+      input.autonomyEvidence.platformDraft.mindId !== "recorded-demo-mind" &&
+      input.autonomyEvidence.platformDraft.validation.valid,
+  );
+  const autonomyIsDemo = Boolean(
+    autonomyIsLinked &&
+      input.dailyFollowUp &&
+      input.autonomyEvidence &&
+      (input.dailyFollowUp.mode !== "real" ||
+        input.autonomyEvidence.proposal.synthetic ||
+        input.autonomyEvidence.proposal.radarProof?.mode !== "live" ||
+        input.autonomyEvidence.proposal.radarProof?.decisionMode !== "mind" ||
+        input.autonomyEvidence.platformDraft.mindId === "recorded-demo-mind"),
+  );
+  const autonomy: CompetitionProofStage = autonomyIsLinked
       ? {
-          status: input.dailyFollowUp.mode === "real" ? "verified" : "demo",
+          status: autonomyIsReal ? "verified" : autonomyIsDemo ? "demo" : "missing",
           label:
-            input.dailyFollowUp.mode === "real"
+            autonomyIsReal
               ? "真实 Mind 已自主跟进"
-              : "仅有演示自主跟进证据",
+              : autonomyIsDemo
+                ? "仅有演示自主跟进证据"
+                : "自主草稿未通过校验",
           detail:
-            input.dailyFollowUp.mode === "real"
-              ? `后台任务已在 ${input.dailyFollowUp.lastRunAt} 自主运行真实雷达。`
-              : "后台任务已自主运行演示雷达，但不能冒充真实 Mind 调用。",
-          decisionId: input.dailyFollowUp.lastRadarOperationId,
+            autonomyIsReal
+              ? `后台任务已在 ${input.dailyFollowUp?.lastRunAt} 自主完成真实雷达、选题和待审核平台草稿。`
+              : autonomyIsDemo
+                ? "后台任务包含演示来源或 Recorded Mind，不能冒充真实自主调用。"
+                : "后台任务已运行，但真实平台草稿尚未通过校验。",
+          decisionId: input.dailyFollowUp?.lastRadarOperationId,
         }
       : {
           status: "missing",
           label: "缺少自主跟进证据",
           detail: input.dailyFollowUp?.lastError
             ? `最近一次后台任务失败：${input.dailyFollowUp.lastError}`
-            : "请启用每日跟进，并让后台任务完成至少一次运行。",
+            : "请启用每日跟进，并让后台任务自主完成一次雷达、选题和待审核草稿。",
         };
 
+  const acceptedAppliedMemory = input.causalChain?.memory ?? input.memories.find(
+    (memory) => memory.status === "accepted" && memory.applicationCount > 0 && !memory.synthetic,
+  );
+  const memoryTime = acceptedAppliedMemory ? Date.parse(acceptedAppliedMemory.acceptedAt ?? acceptedAppliedMemory.createdAt) : Number.NaN;
+  const platformUseIsLater = Boolean(
+    acceptedAppliedMemory &&
+      input.latestPlatformDraft?.usedMemoryIds.includes(acceptedAppliedMemory.memoryId) &&
+      Date.parse(input.latestPlatformDraft.createdAt) > memoryTime &&
+      (!acceptedAppliedMemory.sourceProposalId || input.latestPlatformDraft.proposalId !== acceptedAppliedMemory.sourceProposalId),
+  );
+  const proposalUseIsLater = Boolean(
+    acceptedAppliedMemory &&
+      input.latestProposal?.mindDecision.usedMemoryIds?.includes(acceptedAppliedMemory.memoryId) &&
+      Date.parse(input.latestProposal.generatedAt) > memoryTime &&
+      (!acceptedAppliedMemory.sourceProposalId || input.latestProposal.operationId !== acceptedAppliedMemory.sourceProposalId),
+  );
+  const radarUseIsLater = Boolean(
+    acceptedAppliedMemory &&
+      input.latestRadar?.mindDecision?.usedMemoryIds?.includes(acceptedAppliedMemory.memoryId) &&
+      Date.parse(input.latestRadar.generatedAt) > memoryTime,
+  );
+  const decisionUsedMemory = platformUseIsLater || proposalUseIsLater || radarUseIsLater;
+  const memoryCausality: CompetitionProofStage = acceptedAppliedMemory && decisionUsedMemory
+    ? {
+        status: "verified",
+        label: "已证明记忆影响下一轮决策",
+        detail: `记忆 ${acceptedAppliedMemory.memoryId} 已被真实 Mind 用于后续轮次，共记录 ${acceptedAppliedMemory.applicationCount} 次应用。`,
+        decisionId: platformUseIsLater
+          ? input.latestPlatformDraft?.decisionId
+          : proposalUseIsLater
+            ? input.latestProposal?.mindDecision.decisionId
+            : input.latestRadar?.mindDecision?.decisionId,
+        mindName: platformUseIsLater
+          ? input.latestPlatformDraft?.mindName
+          : proposalUseIsLater
+            ? input.latestProposal?.mindDecision.mindName
+            : input.latestRadar?.mindDecision?.mindName,
+        conversationAlias: platformUseIsLater
+          ? input.latestPlatformDraft?.conversationAlias
+          : proposalUseIsLater
+            ? input.latestProposal?.mindDecision.conversationAlias
+            : input.latestRadar?.mindDecision?.conversationAlias,
+      }
+    : {
+        status: input.memories.some((memory) => memory.synthetic && memory.applicationCount > 0) ? "demo" : "missing",
+        label: "缺少记忆因果证据",
+        detail: "请接受一条真实学习记忆，并让下一轮 Mind 明确返回该 memoryId。",
+      };
+
   return {
-    readyForJudging: [selection, expression, learning, autonomy].every(
+    readyForJudging: [selection, expression, learning, autonomy, memoryCausality].every(
       (stage) => stage.status === "verified",
     ),
     generatedAt: input.generatedAt,
@@ -1363,5 +1954,14 @@ function buildCompetitionProof(input: {
     expression,
     learning,
     autonomy,
+    memoryCausality,
   };
+}
+
+function nextDailyRun(now: Date, dailyTime = "09:00") {
+  const [hours, minutes] = dailyTime.split(":").map(Number);
+  const next = new Date(now);
+  next.setDate(next.getDate() + 1);
+  next.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return next.toISOString();
 }

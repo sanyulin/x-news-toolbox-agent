@@ -7,13 +7,14 @@ import type { CreatorProfile } from "@/core/creator-desk";
 
 type EditableProfile = Pick<
   CreatorProfile,
-  "positioning" | "audience" | "voice"
+  "positioning" | "audience" | "voice" | "boundaries"
 >;
 
 const emptyProfile: EditableProfile = {
   positioning: "",
   audience: "",
   voice: "",
+  boundaries: "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
 };
 
 export function CreatorProfileForm({
@@ -104,6 +105,18 @@ export function CreatorProfileForm({
             required
             rows={3}
             value={profile.voice}
+          />
+        </label>
+        <label>
+          <span>内容禁区</span>
+          <textarea
+            maxLength={400}
+            minLength={2}
+            onChange={(event) => update("boundaries", event.target.value)}
+            placeholder="例如：不编造数据，不冒充亲身体验，不讨论未核实传闻"
+            required
+            rows={3}
+            value={profile.boundaries ?? ""}
           />
         </label>
       </div>

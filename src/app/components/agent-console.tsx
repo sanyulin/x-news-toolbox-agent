@@ -71,6 +71,17 @@ export function AgentConsole({
     }
   }
 
+  async function retry() {
+    if (!job) return;
+    setMessage("");
+    try {
+      const response = await fetch(`/api/runs/${job.id}/retry`, { method: "POST" });
+      const result = await response.json() as { run?: RadarJobRecord; error?: string };
+      if (!response.ok || !result.run) throw new Error(result.error || "重试失败");
+      setJob(result.run);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "重试失败"); }
+  }
+
   return (
     <section className="page-stack">
       <header className="page-heading">
@@ -95,10 +106,12 @@ export function AgentConsole({
         </label>
 
         <div className="form-footer">
-          <p className={job?.status === "failed" ? "form-status settings-error" : "form-status"} aria-live="polite">{running ? job.message : job?.error || message || readinessMessage}</p>
+          <p className={job?.status === "failed" ? "form-status settings-error" : "form-status"} aria-live="polite">{running ? `${job.message}${job.executionMode === "replay" ? "（历史 checkpoint 回放）" : ""}` : job?.error || message || readinessMessage}</p>
           <button className="primary-action compact-action" disabled={!enabled || running} type="submit">
             {running ? "正在运行…" : "运行 Agent"}
           </button>
+          {job?.status === "failed" && job.runStage !== "failed_terminal" ? <button className="button button-secondary" onClick={() => void retry()} type="button">从失败阶段重试</button> : null}
+          {job?.runStage === "failed_terminal" ? <small>请先到“连接设置”修复配置，再新建一次运行。</small> : null}
         </div>
       </form>
 

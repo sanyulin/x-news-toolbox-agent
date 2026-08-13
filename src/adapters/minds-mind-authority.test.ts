@@ -1,8 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createMindsMindAuthority } from "./minds-mind-authority";
+import type { CreatorMemory } from "@/core/creator-desk";
 
 describe("Minds 能力 Adapter", () => {
+  it("把自动唤醒回复解析为受用户上限约束的 Mind 计划", async () => {
+    const client = {
+      listMinds: vi.fn().mockResolvedValue([{ mindId: "mind-b", name: "创作者主脑" }]),
+      ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
+      getLatestHistoryFingerprint: vi.fn().mockResolvedValue("before-plan"),
+      sendMessage: vi.fn().mockResolvedValue({}),
+      waitForReply: vi.fn().mockResolvedValue({ timedOut: false, reply: { messageId: "plan-1", messageText: JSON.stringify({ action: "scan", focus: "AI 产品商业化", reason: "符合创作者定位，值得扫描。", requestedDraftCount: 2, usedMemoryIds: ["memory-1"], memoryInfluence: "优先寻找带商业证据的更新。", memoryConflicts: [] }) } }),
+    };
+    const authority = createMindsMindAuthority({ builderApiKey: "builder-key", preferredMindId: "mind-b", clientFactory: () => client });
+    await expect(authority.planAutonomousRun({ asOf: "2026-08-13T09:00:00.000Z", profile: { positioning: "AI 商业", audience: "创作者", voice: "专业", version: 1, updatedAt: "2026-08-13T08:00:00.000Z" }, memories: [{ memoryId: "memory-1", scope: "global", text: "优先证据", sourcePublicationId: "publication-1", sourceMetrics: { capturedAt: "2026-08-13T08:00:00.000Z", source: "manual_entry", values: {}, availableFields: [], missingFields: [], engagementRateFormula: "(likes + replies + reposts + bookmarks) / impressions", calculationState: "incomplete" }, confidence: "medium", status: "accepted", createdAt: "2026-08-13T08:00:00.000Z", applicationCount: 0, synthetic: false }], locked: { platform: "x", maximumDrafts: 2 } })).resolves.toMatchObject({ decisionId: "plan-1", action: "scan", requestedDraftCount: 2, usedMemoryIds: ["memory-1"] });
+    expect(client.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ messageText: expect.stringContaining("用户锁定配置") }));
+  });
+
+  it("把接受、替代和删除同步到同一稳定 Mind 会话", async () => {
+    const client = { listMinds: vi.fn().mockResolvedValue([{ mindId: "mind-b", name: "创作者主脑" }]), ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }), getLatestHistoryFingerprint: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn().mockResolvedValue({}), waitForReply: vi.fn() };
+    const authority = createMindsMindAuthority({ builderApiKey: "builder-key", preferredMindId: "mind-b", conversationAlias: "creator-main", clientFactory: () => client });
+    const memory: CreatorMemory = { memoryId: "memory-1", scope: "x", text: "测试结论后紧跟来源", sourcePublicationId: "publication-1", sourceMetrics: { capturedAt: "2026-08-13T00:00:00.000Z", source: "manual_entry", values: {}, availableFields: [], missingFields: ["impressions", "likes", "replies", "reposts", "bookmarks", "followersDelta"], engagementRateFormula: "(likes + replies + reposts + bookmarks) / impressions", calculationState: "incomplete" }, confidence: "medium", status: "accepted", createdAt: "2026-08-13T00:00:00.000Z", applicationCount: 0, synthetic: false };
+
+    await authority.commitMemory(memory);
+    await authority.commitMemory({ ...memory, status: "superseded" });
+    await authority.commitMemory({ ...memory, status: "deleted" });
+
+    expect(client.ensureConversation).toHaveBeenCalledTimes(3);
+    expect(client.sendMessage.mock.calls.map(([input]) => input.messageText.split(" ")[0])).toEqual(["MEMORY_COMMIT", "MEMORY_SUPERSEDE", "MEMORY_DELETE"]);
+  });
+
   it("没有 Builder API key 时返回可执行的配置指引", async () => {
     const authority = createMindsMindAuthority({ builderApiKey: undefined });
 
@@ -74,6 +101,9 @@ describe("Minds 能力 Adapter", () => {
           fingerprint: "fingerprint-001",
           messageText: JSON.stringify({
             rationale: "这个主题最贴近创业者当前决策。",
+            usedMemoryIds: ["memory-x-1"],
+            memoryInfluence: "根据已确认偏好提高证据型选题的优先级。",
+            memoryConflicts: ["新信号与旧的短期假设存在冲突。"],
             rankedSignals: [
               {
                 signalId: "signal-1",
@@ -121,6 +151,9 @@ describe("Minds 能力 Adapter", () => {
       decisionId: "message-001",
       mindId: "mind-b",
       conversationAlias: "creator-main",
+      usedMemoryIds: ["memory-x-1"],
+      memoryInfluence: "根据已确认偏好提高证据型选题的优先级。",
+      memoryConflicts: ["新信号与旧的短期假设存在冲突。"],
       rankedSignals: [{ signalId: "signal-1", recommendation: "write" }],
     });
     expect(client.sendMessage).toHaveBeenCalledWith(
@@ -129,6 +162,7 @@ describe("Minds 能力 Adapter", () => {
         messageText: expect.stringContaining("解释 AI 商业化"),
       }),
     );
+    expect(client.sendMessage.mock.calls[0][0].messageText).toContain("不自动发布");
   });
 
   it("把内容建议回复校验为绑定证据版本的中英独立草稿", async () => {

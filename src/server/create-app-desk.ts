@@ -134,6 +134,8 @@ export function createAppDesk({ sourceUrl, sources, signalSource }: { sourceUrl?
     proposalStore: workspaceStore,
     publicationStore: workspaceStore,
     learningStore: workspaceStore,
+    memoryStore: workspaceStore,
+    platformDraftStore: workspaceStore,
     schedulerStore: workspaceStore,
     signalSource: signalSource ?? (runtimeConfig.horizon?.enabled
       ? createRadarSignalSource({ sources: selectedSources })

@@ -45,6 +45,7 @@ describe("SQLite 创作者档案存储", () => {
         positioning: "解释 AI 商业化",
         audience: "创业者",
         voice: "克制、清楚",
+        boundaries: "不编造数据，不自动发布",
       },
     };
 
@@ -59,6 +60,7 @@ describe("SQLite 创作者档案存储", () => {
     await expect(store.getCreatorProfile()).resolves.toMatchObject({
       version: 1,
       audience: "创业者",
+      boundaries: "不编造数据，不自动发布",
     });
 
     await expect(

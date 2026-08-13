@@ -105,4 +105,29 @@ describe("runtime config", () => {
       horizon: undefined,
     });
   });
+
+  it("部署环境可以提供 Horizon 配置但公开状态不回显密钥", () => {
+    const config = getEffectiveRuntimeConfig(configPath, {
+      HORIZON_ENABLED: "true",
+      HORIZON_PROVIDER: "deepseek",
+      HORIZON_API_KEY: "secret-horizon-key",
+      HORIZON_HOURS: "12",
+      HORIZON_THRESHOLD: "8",
+      HORIZON_OSS_INSIGHT: "true",
+    });
+
+    expect(config.horizon).toMatchObject({
+      enabled: true,
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      apiKey: "secret-horizon-key",
+      hours: 12,
+      threshold: 8,
+      ossInsight: true,
+    });
+    expect(JSON.stringify(getPublicRuntimeConfig(configPath, {
+      HORIZON_PROVIDER: "deepseek",
+      HORIZON_API_KEY: "secret-horizon-key",
+    }))).not.toContain("secret-horizon-key");
+  });
 });

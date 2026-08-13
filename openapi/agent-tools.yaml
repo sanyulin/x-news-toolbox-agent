@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: X News Toolbox Agent Tools
+  version: 1.0.0
+  description: Tools for a Mind to configure and operate one deployed X News Toolbox instance. Secrets are never accepted as tool arguments.
+servers:
+  - url: https://YOUR_DEPLOYMENT_HOST
+security:
+  - bearerAuth: []
+paths:
+  /api/agent/status:
+    get:
+      operationId: getAgentStatus
+      summary: Inspect readiness, configuration flags, scheduler state, and the latest run.
+      responses:
+        "200":
+          description: Sanitized agent status. No secret values are returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, readyForAutonomy, configuration]
+                properties:
+                  ok: { type: boolean }
+                  readyForAutonomy: { type: boolean }
+                  configuration:
+                    type: object
+                    required: [mindConfigured, mindConnected, creatorProfileConfigured, horizonConfigured, xConfigured, cronAuthenticationConfigured]
+                    properties:
+                      mindConfigured: { type: boolean }
+                      mindConnected: { type: boolean }
+                      creatorProfileConfigured: { type: boolean }
+                      horizonConfigured: { type: boolean }
+                      xConfigured: { type: boolean }
+                      cronAuthenticationConfigured: { type: boolean }
+  /api/agent/configure:
+    post:
+      operationId: configureAgentPreferences
+      summary: Save non-secret creator preferences and the autonomous schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfiguration"
+      responses:
+        "200": { description: Configuration accepted }
+        "400": { description: Invalid input or attempted extra fields }
+        "409": { description: The user must connect a Mind first, or the profile changed concurrently }
+  /api/agent/runs:
+    post:
+      operationId: runDueAgentWork
+      summary: Process autonomous work only when it is due.
+      responses:
+        "200": { description: Due work processed, or no work was due }
+  /api/agent/signals:
+    get:
+      operationId: getLatestSignals
+      summary: Read the latest ranked signals and their source URLs.
+      responses:
+        "200": { description: Latest radar result, or null before the first run }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    AgentConfiguration:
+      type: object
+      additionalProperties: false
+      required: [requestId, profile, automation]
+      properties:
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 80
+          description: Stable idempotency key. Reuse it when retrying the same configuration.
+        profile:
+          type: object
+          additionalProperties: false
+          required: [positioning, audience, voice, boundaries]
+          properties:
+            positioning: { type: string, minLength: 4, maxLength: 240 }
+            audience: { type: string, minLength: 4, maxLength: 240 }
+            voice: { type: string, minLength: 2, maxLength: 160 }
+            boundaries: { type: string, minLength: 2, maxLength: 400 }
+        automation:
+          type: object
+          additionalProperties: false
+          required: [enabled, platform, outputCount, dailyTime]
+          properties:
+            enabled: { type: boolean }
+            platform: { type: string, enum: [x, xiaohongshu] }
+            outputCount: { type: integer, minimum: 1, maximum: 5 }
+            focus: { type: string, maxLength: 240 }
+            dailyTime:
+              type: string
+              pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"

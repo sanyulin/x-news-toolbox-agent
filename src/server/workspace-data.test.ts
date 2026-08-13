@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createWorkspaceDataStore, type StyleProfileRecord } from "@/server/workspace-data";
+import { createWorkspaceDataStore, summarizeCreatorTests, type CreatorTestRecord, type StyleProfileRecord } from "@/server/workspace-data";
 
 const databasePath = join(tmpdir(), `x-news-toolbox-workspace-${process.pid}.sqlite`);
 
@@ -78,5 +78,26 @@ describe("workspace data store", () => {
       status: "running",
       message: "AI 评分中",
     });
+  });
+
+  it("appends replayable checkpoints when the run stage changes", () => {
+    const store = createWorkspaceDataStore(databasePath);
+    store.saveRadarJob({ id: "job-checkpoints", commandId: "command-checkpoints", sourceIds: [], stage: "queued", status: "running", message: "等待", createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z", runStage: "queued", executionMode: "live", checkpoints: [{ stage: "queued", startedAt: "2026-08-13T00:00:00.000Z", heartbeatAt: "2026-08-13T00:00:00.000Z", executionMode: "live" }] });
+    store.updateRadarJob("job-checkpoints", { runStage: "collecting", heartbeatAt: "2026-08-13T00:00:01.000Z" });
+    store.updateRadarJob("job-checkpoints", { runStage: "ranking", heartbeatAt: "2026-08-13T00:00:02.000Z", mindDecisionId: "decision-1" });
+    store.updateRadarJob("job-checkpoints", { runStage: "completed", completedAt: "2026-08-13T00:00:03.000Z" });
+
+    const checkpoints = store.getRadarJob("job-checkpoints")!.checkpoints!;
+    expect(checkpoints.map((checkpoint) => checkpoint.stage)).toEqual(["queued", "collecting", "ranking", "completed"]);
+    expect(checkpoints.slice(0, 3).every((checkpoint) => Boolean(checkpoint.completedAt))).toBe(true);
+    expect(checkpoints[2].mindDecisionId).toBe("decision-1");
+  });
+
+  it("summarizes real creator validation with a true even-count median", () => {
+    const record = (id: string, participant: string, round: 1 | 2, reduction: number, adopted: boolean, mindRecommendationUseful: boolean, memoryImprovement?: string): CreatorTestRecord => ({ id, participant, round, platform: "x", baselineMinutes: 100, assistedMinutes: 100 - reduction, mindRecommendationUseful, adopted, platformFit: 4, memoryImprovement, createdAt: "2026-08-13T00:00:00.000Z" });
+    expect(summarizeCreatorTests([
+      record("1", "A", 1, 20, true, false),
+      record("2", "A", 2, 40, true, true, "第二轮减少了语气修改"),
+    ])).toEqual({ completeParticipants: 1, medianReduction: 30, recommendationUsefulRate: 50, adoptionRate: 100, hasMemoryImprovement: true });
   });
 });

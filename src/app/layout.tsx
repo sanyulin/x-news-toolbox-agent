@@ -12,8 +12,8 @@ import { createWorkspaceDataStore } from "@/server/workspace-data";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "X News Toolbox｜Agent 操作台",
-  description: "输入真实来源并运行创作者 Mind Agent。",
+  title: "X News Toolbox｜创作者内容 Agent",
+  description: "由 Mind 持续发现机会并准备待审核内容。",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body>
         <main className="workbench-shell">
           <aside className="workbench-sidebar">
-            <Link className="brand" href="/radar" aria-label="X News Toolbox 操作台">
+            <Link className="brand" href="/inbox" aria-label="X News Toolbox">
               <Image alt="" height={30} priority src="/x-news-toolbox-logo.png" width={30} />
               <strong>X News Toolbox</strong>
             </Link>

@@ -11,13 +11,14 @@ const requestSchema = z.object({
   positioning: z.string().trim().min(4).max(240),
   audience: z.string().trim().min(4).max(240),
   voice: z.string().trim().min(2).max(160),
+  boundaries: z.string().trim().min(2).max(400),
 });
 
 export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, error: "请完整填写定位、目标受众和表达方式" },
+      { ok: false, error: "请完整填写定位、目标受众、表达方式和内容禁区" },
       { status: 400 },
     );
   }
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
         positioning: parsed.data.positioning,
         audience: parsed.data.audience,
         voice: parsed.data.voice,
+        boundaries: parsed.data.boundaries,
       },
     });
     return NextResponse.json({ ok: true, receipt });

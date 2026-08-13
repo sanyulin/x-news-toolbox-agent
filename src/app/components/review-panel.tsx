@@ -36,7 +36,7 @@ export function ReviewPanel({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "审核提交失败");
-      window.location.assign("/#content-proposal");
+      window.location.assign("/inbox");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "审核提交失败");
       setSubmitting(undefined);
@@ -54,7 +54,7 @@ export function ReviewPanel({
       <div>
         <span>人工审核</span>
         <h4>最终决定始终由你作出</h4>
-        <p>批准只会锁定可复制版本，不会自动发布到 X。</p>
+        <p>批准只会锁定可复制版本，不会自动发布到平台。</p>
       </div>
       <label>
         <span>审核原因</span>

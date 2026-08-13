@@ -7,15 +7,23 @@ import type {
   CreatorProfile,
   CreatorProfileStore,
   DailyFollowUpJob,
+  CreatorMemory,
   LearningStore,
   LearningUpdate,
   PublicationLink,
   PublicationStore,
   ProposalStore,
+  PlatformDraft,
+  PlatformDraftStore,
+  MemoryStore,
   RadarRun,
   SchedulerStore,
   WorkspaceStore,
 } from "@/core/creator-desk";
+
+function readJson<T>(value: string): T | undefined {
+  try { return JSON.parse(value) as T; } catch { return undefined; }
+}
 
 export function createSqliteHealth(databasePath: string) {
   return {
@@ -49,6 +57,8 @@ export function createSqliteWorkspaceStore(
   ProposalStore &
   PublicationStore &
   LearningStore &
+  MemoryStore &
+  PlatformDraftStore &
   SchedulerStore {
   if (databasePath !== ":memory:") {
     mkdirSync(dirname(databasePath), { recursive: true });
@@ -69,6 +79,7 @@ export function createSqliteWorkspaceStore(
       positioning TEXT NOT NULL,
       audience TEXT NOT NULL,
       voice TEXT NOT NULL,
+      boundaries TEXT NOT NULL DEFAULT '',
       version INTEGER NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -121,8 +132,54 @@ export function createSqliteWorkspaceStore(
     CREATE TABLE IF NOT EXISTS daily_follow_up_job (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       job_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS creator_memories (
+      memory_id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      memory_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_drafts (
+      operation_id TEXT PRIMARY KEY,
+      command_id TEXT NOT NULL UNIQUE,
+      proposal_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      draft_json TEXT NOT NULL
     )
   `);
+
+  const profileColumns = database.prepare("PRAGMA table_info(creator_profile)").all() as Array<{ name: string }>;
+  if (!profileColumns.some((column) => column.name === "boundaries")) {
+    database.exec("ALTER TABLE creator_profile ADD COLUMN boundaries TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Additive migration: turn existing learning records into auditable memory state.
+  for (const row of database.prepare("SELECT learning_json FROM learning_updates").all()) {
+    const learning = readJson<LearningUpdate>((row as { learning_json: string }).learning_json);
+    if (!learning) continue;
+    const exists = database.prepare("SELECT 1 FROM creator_memories WHERE memory_id = ?").get(learning.operationId);
+    if (exists) continue;
+    const publicationRow = database.prepare("SELECT publication_json FROM publications WHERE operation_id = ?").get(learning.publicationId) as { publication_json: string } | undefined;
+    const publication = publicationRow ? readJson<PublicationLink>(publicationRow.publication_json) : undefined;
+    if (!publication) continue;
+    const memory: CreatorMemory = {
+      memoryId: learning.operationId,
+      scope: learning.scope ?? publication.platform,
+      text: learning.memoryText,
+      sourcePublicationId: publication.operationId,
+      sourceProposalId: publication.proposalId,
+      sourceMetrics: publication.metrics,
+      confidence: learning.mindDecision.confidence,
+      status: learning.status,
+      createdAt: learning.createdAt,
+      acceptedAt: learning.status === "accepted" ? learning.createdAt : undefined,
+      applicationCount: 0,
+      synthetic: learning.synthetic,
+    };
+    database.prepare("INSERT INTO creator_memories (memory_id, created_at, scope, memory_json) VALUES (?, ?, ?, ?)").run(memory.memoryId, memory.createdAt, memory.scope, JSON.stringify(memory));
+  }
 
   const read = (row: unknown): RadarRun | undefined => {
     if (!row) return undefined;
@@ -166,6 +223,7 @@ export function createSqliteWorkspaceStore(
       positioning: value.positioning as string,
       audience: value.audience as string,
       voice: value.voice as string,
+      boundaries: (value.boundaries as string) || "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
       version: value.version as number,
       updatedAt: value.updated_at as string,
     };
@@ -193,6 +251,16 @@ export function createSqliteWorkspaceStore(
     if (!row) return undefined;
     const value = row as Record<string, string>;
     return JSON.parse(value.job_json) as DailyFollowUpJob;
+  };
+
+  const readMemory = (row: unknown): CreatorMemory | undefined => {
+    if (!row) return undefined;
+    return JSON.parse((row as { memory_json: string }).memory_json) as CreatorMemory;
+  };
+
+  const readPlatformDraft = (row: unknown): PlatformDraft | undefined => {
+    if (!row) return undefined;
+    return JSON.parse((row as { draft_json: string }).draft_json) as PlatformDraft;
   };
 
   return {
@@ -232,7 +300,7 @@ export function createSqliteWorkspaceStore(
     async getLatestRadarRun() {
       return read(
         database
-          .prepare("SELECT * FROM radar_runs ORDER BY generated_at DESC LIMIT 1")
+          .prepare("SELECT * FROM radar_runs ORDER BY generated_at DESC, rowid DESC LIMIT 1")
           .get(),
       );
     },
@@ -279,12 +347,13 @@ export function createSqliteWorkspaceStore(
         database
           .prepare(`
             INSERT INTO creator_profile (
-              id, positioning, audience, voice, version, updated_at
-            ) VALUES (1, ?, ?, ?, ?, ?)
+              id, positioning, audience, voice, boundaries, version, updated_at
+            ) VALUES (1, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               positioning = excluded.positioning,
               audience = excluded.audience,
               voice = excluded.voice,
+              boundaries = excluded.boundaries,
               version = excluded.version,
               updated_at = excluded.updated_at
           `)
@@ -292,6 +361,7 @@ export function createSqliteWorkspaceStore(
             input.profile.positioning,
             input.profile.audience,
             input.profile.voice,
+            input.profile.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
             nextVersion,
             input.updatedAt,
           );
@@ -347,10 +417,24 @@ export function createSqliteWorkspaceStore(
       return readProposal(
         database
           .prepare(
-            "SELECT proposal_json FROM proposals ORDER BY generated_at DESC LIMIT 1",
+            "SELECT proposal_json FROM proposals ORDER BY generated_at DESC, rowid DESC LIMIT 1",
           )
           .get(),
       );
+    },
+
+    async listProposals(limit = 20) {
+      return database
+        .prepare("SELECT proposal_json FROM proposals ORDER BY generated_at DESC, rowid DESC LIMIT ?")
+        .all(Math.max(1, Math.min(100, limit)))
+        .flatMap((row) => {
+          const proposal = readProposal(row);
+          return proposal ? [proposal] : [];
+        });
+    },
+
+    async getProposalById(operationId) {
+      return readProposal(database.prepare("SELECT proposal_json FROM proposals WHERE operation_id = ?").get(operationId));
     },
 
     async reviewProposal(input) {
@@ -519,10 +603,14 @@ export function createSqliteWorkspaceStore(
       return readPublication(
         database
           .prepare(
-            "SELECT publication_json FROM publications ORDER BY linked_at DESC LIMIT 1",
+            "SELECT publication_json FROM publications ORDER BY linked_at DESC, rowid DESC LIMIT 1",
           )
           .get(),
       );
+    },
+
+    async getPublicationById(operationId) {
+      return readPublication(database.prepare("SELECT publication_json FROM publications WHERE operation_id = ?").get(operationId));
     },
 
     async findLearningByCommandId(commandId) {
@@ -637,10 +725,94 @@ export function createSqliteWorkspaceStore(
       return readLearning(
         database
           .prepare(
-            "SELECT learning_json FROM learning_updates ORDER BY created_at DESC LIMIT 1",
+            "SELECT learning_json FROM learning_updates ORDER BY created_at DESC, rowid DESC LIMIT 1",
           )
           .get(),
       );
+    },
+
+    async getLearningById(operationId) {
+      return readLearning(database.prepare("SELECT learning_json FROM learning_updates WHERE operation_id = ?").get(operationId));
+    },
+
+    async listMemories(input) {
+      const rows = database.prepare("SELECT memory_json FROM creator_memories ORDER BY created_at DESC").all();
+      const memories = rows
+        .map(readMemory)
+        .filter((memory): memory is CreatorMemory => Boolean(memory))
+        .filter((memory) => !input?.status || memory.status === input.status)
+        .filter((memory) => !input?.scope || memory.scope === input.scope || memory.scope === "global")
+        .sort((left, right) => {
+          if (input?.scope) {
+            const leftSpecific = left.scope === input.scope ? 1 : 0;
+            const rightSpecific = right.scope === input.scope ? 1 : 0;
+            if (leftSpecific !== rightSpecific) return rightSpecific - leftSpecific;
+          }
+          return right.createdAt.localeCompare(left.createdAt);
+        });
+
+      // Generation deliberately recalls at most five accepted memories. The
+      // registry and audit views must still be able to inspect the full history.
+      return input?.status === "accepted" ? memories.slice(0, 5) : memories;
+    },
+
+    async saveMemory(memory) {
+      database.prepare(`
+        INSERT INTO creator_memories (memory_id, created_at, scope, memory_json)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(memory_id) DO UPDATE SET scope = excluded.scope, memory_json = excluded.memory_json
+      `).run(memory.memoryId, memory.createdAt, memory.scope, JSON.stringify(memory));
+    },
+
+    async markMemoriesApplied(input) {
+      for (const memoryId of input.memoryIds) {
+        const current = readMemory(database.prepare("SELECT memory_json FROM creator_memories WHERE memory_id = ?").get(memoryId));
+        if (!current || current.status !== "accepted") continue;
+        const updated: CreatorMemory = { ...current, lastAppliedAt: input.appliedAt, applicationCount: current.applicationCount + 1 };
+        database.prepare("UPDATE creator_memories SET memory_json = ? WHERE memory_id = ?").run(JSON.stringify(updated), memoryId);
+      }
+    },
+
+    async updateMemory(input) {
+      const current = readMemory(database.prepare("SELECT memory_json FROM creator_memories WHERE memory_id = ?").get(input.memoryId));
+      if (!current) throw new Error("找不到这条创作者记忆");
+      const updated: CreatorMemory = {
+        ...current,
+        status: input.status,
+        text: input.text?.trim() || current.text,
+        acceptedAt: input.status === "accepted" ? current.acceptedAt ?? input.acceptedAt ?? new Date().toISOString() : current.acceptedAt,
+      };
+      database.prepare("UPDATE creator_memories SET memory_json = ? WHERE memory_id = ?").run(JSON.stringify(updated), input.memoryId);
+      return updated;
+    },
+
+    async findPlatformDraftByCommandId(commandId) {
+      return readPlatformDraft(database.prepare("SELECT draft_json FROM platform_drafts WHERE command_id = ?").get(commandId));
+    },
+
+    async savePlatformDraft(draft) {
+      database.prepare(`
+        INSERT INTO platform_drafts (operation_id, command_id, proposal_id, created_at, draft_json)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(draft.operationId, draft.commandId, draft.proposalId, draft.createdAt, JSON.stringify(draft));
+    },
+
+    async getLatestPlatformDraft() {
+      return readPlatformDraft(database.prepare("SELECT draft_json FROM platform_drafts ORDER BY created_at DESC, rowid DESC LIMIT 1").get());
+    },
+
+    async listPlatformDrafts(limit = 20) {
+      return database
+        .prepare("SELECT draft_json FROM platform_drafts ORDER BY created_at DESC, rowid DESC LIMIT ?")
+        .all(Math.max(1, Math.min(100, limit)))
+        .flatMap((row) => {
+          const draft = readPlatformDraft(row);
+          return draft ? [draft] : [];
+        });
+    },
+
+    async getPlatformDraftById(operationId) {
+      return readPlatformDraft(database.prepare("SELECT draft_json FROM platform_drafts WHERE operation_id = ?").get(operationId));
     },
 
     async getDailyFollowUp() {
@@ -681,6 +853,10 @@ export function createSqliteWorkspaceStore(
           operationId: input.operationId,
           enabled: input.enabled,
           mode: input.mode,
+          platform: input.platform,
+          outputCount: Math.max(1, Math.min(5, input.outputCount ?? 1)),
+          focus: input.focus?.trim() || undefined,
+          dailyTime: input.dailyTime ?? "09:00",
           runState: "idle",
           nextRunAt: input.enabled ? input.now : undefined,
           updatedAt: input.now,
@@ -763,6 +939,12 @@ export function createSqliteWorkspaceStore(
         nextRunAt: input.nextRunAt,
         lastRunAt: input.completedAt,
         lastRadarOperationId: input.radarOperationId,
+        lastProposalOperationId: input.proposalOperationId,
+        lastPlatformDraftOperationId: input.platformDraftOperationId,
+        lastProposalOperationIds: input.proposalOperationIds,
+        lastPlatformDraftOperationIds: input.platformDraftOperationIds,
+        lastPlan: input.plan,
+        lastOutcome: input.outcome,
         lastError: undefined,
         updatedAt: input.completedAt,
       };

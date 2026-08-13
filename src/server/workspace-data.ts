@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { PlatformId, RadarSignal } from "@/core/creator-desk";
 
 export type SourceType = "rss" | "atom" | "json" | "rsshub" | "x-account";
 export type SourceStatus = "unchecked" | "ready" | "error";
@@ -17,6 +18,21 @@ export type RadarJobStage =
   | "completed"
   | "failed";
 
+export type RunStage = "queued" | "collecting" | "ranking" | "researching" | "drafting" | "waiting_review" | "completed" | "failed_retryable" | "failed_terminal";
+
+export interface RunCheckpoint {
+  stage: RunStage;
+  startedAt: string;
+  completedAt?: string;
+  heartbeatAt: string;
+  inputSnapshot?: RadarJobRecord["inputSnapshot"];
+  evidenceVersion?: string;
+  mindDecisionId?: string;
+  usedMemoryIds?: string[];
+  executionMode: "live" | "replay" | "demo";
+  error?: string;
+}
+
 export interface RadarJobRecord {
   id: string;
   commandId: string;
@@ -29,6 +45,24 @@ export interface RadarJobRecord {
   updatedAt: string;
   radarOperationId?: string;
   error?: string;
+  retryCount?: number;
+  collectedSignals?: RadarSignal[];
+  collectionWarnings?: string[];
+  runStage?: RunStage;
+  inputSnapshot?: { sourceIds: string[]; focus?: string; proposalId?: string; platform?: PlatformId; evidenceVersion?: string; reviewDecision?: "approve" | "request_changes" | "reject" };
+  heartbeatAt?: string;
+  completedAt?: string;
+  mindDecisionId?: string;
+  usedMemoryIds?: string[];
+  errorType?: "timeout" | "configuration" | "network" | "unknown";
+  nextResumeStage?: "collecting" | "ranking" | "drafting";
+  executionMode?: "live" | "replay" | "demo";
+  proposalId?: string;
+  platform?: PlatformId;
+  platformMode?: "demo" | "mind";
+  evidenceVersion?: string;
+  platformDraftId?: string;
+  checkpoints?: RunCheckpoint[];
 }
 
 export interface SourceRecord {
@@ -73,6 +107,36 @@ export interface StyleProfileRecord {
   activatedAt?: string;
 }
 
+export interface CreatorTestRecord {
+  id: string;
+  participant: string;
+  round: 1 | 2;
+  platform: "x" | "xiaohongshu";
+  baselineMinutes: number;
+  assistedMinutes: number;
+  mindRecommendationUseful?: boolean;
+  adopted: boolean;
+  modificationReason?: string;
+  platformFit: 1 | 2 | 3 | 4 | 5;
+  memoryImprovement?: string;
+  createdAt: string;
+}
+
+export function summarizeCreatorTests(records: CreatorTestRecord[]) {
+  const participants = new Set(records.map((record) => record.participant));
+  const completeParticipants = [...participants].filter((participant) => new Set(records.filter((record) => record.participant === participant).map((record) => record.round)).size === 2).length;
+  const reductions = records.map((record) => ((record.baselineMinutes - record.assistedMinutes) / record.baselineMinutes) * 100).sort((a, b) => a - b);
+  const middle = Math.floor(reductions.length / 2);
+  const medianReduction = reductions.length === 0 ? 0 : reductions.length % 2 ? reductions[middle] : (reductions[middle - 1] + reductions[middle]) / 2;
+  return {
+    completeParticipants,
+    medianReduction,
+    recommendationUsefulRate: records.length ? (records.filter((record) => record.mindRecommendationUseful).length / records.length) * 100 : 0,
+    adoptionRate: records.length ? (records.filter((record) => record.adopted).length / records.length) * 100 : 0,
+    hasMemoryImprovement: records.some((record) => record.round === 2 && Boolean(record.memoryImprovement)),
+  };
+}
+
 export function resolveDatabasePath(value?: string, cwd = process.cwd()) {
   return value?.trim() || join(cwd, "data", "creator-mind.sqlite");
 }
@@ -90,7 +154,7 @@ export function createWorkspaceDataStore(
 
     getLatestRadarJob(): RadarJobRecord | undefined {
       return withDatabase(databasePath, (database) => {
-        const row = database.prepare("SELECT job_json FROM radar_jobs ORDER BY updated_at DESC LIMIT 1").get() as { job_json: string } | undefined;
+        const row = database.prepare("SELECT job_json FROM radar_jobs ORDER BY updated_at DESC, rowid DESC LIMIT 1").get() as { job_json: string } | undefined;
         return row ? JSON.parse(row.job_json) as RadarJobRecord : undefined;
       });
     },
@@ -112,7 +176,28 @@ export function createWorkspaceDataStore(
     updateRadarJob(id: string, patch: Partial<Omit<RadarJobRecord, "id" | "commandId" | "createdAt">>) {
       const current = this.getRadarJob(id);
       if (!current) return undefined;
-      return this.saveRadarJob({ ...current, ...patch, updatedAt: new Date().toISOString() });
+      const now = new Date().toISOString();
+      const checkpoints = [...(current.checkpoints ?? [])];
+      if (patch.runStage) {
+        const last = checkpoints.at(-1);
+        if (!last || last.stage !== patch.runStage) {
+          if (last && !last.completedAt) checkpoints[checkpoints.length - 1] = { ...last, completedAt: now, heartbeatAt: patch.heartbeatAt ?? now };
+          const terminal = patch.runStage === "completed" || patch.runStage === "failed_retryable" || patch.runStage === "failed_terminal";
+          checkpoints.push({ stage: patch.runStage, startedAt: now, completedAt: terminal ? patch.completedAt ?? now : undefined, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? current.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? current.evidenceVersion, mindDecisionId: patch.mindDecisionId, usedMemoryIds: patch.usedMemoryIds, executionMode: patch.executionMode ?? current.executionMode ?? "live", error: patch.error });
+        } else {
+          checkpoints[checkpoints.length - 1] = { ...last, completedAt: patch.completedAt ?? last.completedAt, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? last.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? last.evidenceVersion, mindDecisionId: patch.mindDecisionId ?? last.mindDecisionId, usedMemoryIds: patch.usedMemoryIds ?? last.usedMemoryIds, executionMode: patch.executionMode ?? last.executionMode, error: patch.error ?? last.error };
+        }
+      }
+      return this.saveRadarJob({ ...current, ...patch, checkpoints, updatedAt: now });
+    },
+
+    listCreatorTests(): CreatorTestRecord[] {
+      return withDatabase(databasePath, (database) => database.prepare("SELECT record_json FROM creator_tests ORDER BY created_at DESC").all().map((row) => JSON.parse((row as { record_json: string }).record_json) as CreatorTestRecord));
+    },
+
+    saveCreatorTest(record: CreatorTestRecord) {
+      withDatabase(databasePath, (database) => database.prepare("INSERT INTO creator_tests (id, participant, round, created_at, record_json) VALUES (?, ?, ?, ?, ?)").run(record.id, record.participant, record.round, record.createdAt, JSON.stringify(record)));
+      return record;
     },
 
     listSources(): SourceRecord[] {
@@ -264,7 +349,7 @@ export function createWorkspaceDataStore(
     getActiveStyleProfile() {
       return withDatabase(databasePath, (database) => {
         const row = database
-          .prepare("SELECT * FROM style_profiles WHERE status = 'active' ORDER BY activated_at DESC LIMIT 1")
+          .prepare("SELECT * FROM style_profiles WHERE status = 'active' ORDER BY activated_at DESC, rowid DESC LIMIT 1")
           .get();
         return row ? readStyleProfile(row) : undefined;
       });
@@ -311,6 +396,15 @@ function withDatabase<T>(databasePath: string, action: (database: DatabaseSync) 
         status TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         job_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS creator_tests (
+        id TEXT PRIMARY KEY,
+        participant TEXT NOT NULL,
+        round INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        UNIQUE(participant, round)
       );
     `);
     return action(database);

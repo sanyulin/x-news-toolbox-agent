@@ -17,11 +17,13 @@ export function PublicationForm({
   proposalVersion,
   mode,
   suggestedText,
+  platform = "x",
 }: {
   proposalId: string;
   proposalVersion: number;
   mode: "demo" | "real";
   suggestedText: string;
+  platform?: "x" | "xiaohongshu";
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +50,7 @@ export function PublicationForm({
           proposalId,
           expectedProposalVersion: proposalVersion,
           mode,
+          platform,
           postUrl: form.get("postUrl"),
           actualText: form.get("actualText"),
           publishedAt: new Date(String(form.get("publishedAt"))).toISOString(),
@@ -73,8 +76,8 @@ export function PublicationForm({
         <p>系统不会替你发布；这里只记录链接、最终文案和你愿意提供的指标。</p>
       </div>
       <label className="field-wide">
-        <span>X 帖子链接</span>
-        <input name="postUrl" placeholder="https://x.com/…/status/…" required type="url" />
+        <span>{platform === "x" ? "X 帖子链接" : "小红书笔记链接"}</span>
+        <input name="postUrl" placeholder={platform === "x" ? "https://x.com/…/status/…" : "https://www.xiaohongshu.com/explore/…"} required type="url" />
       </label>
       <label className="field-wide">
         <span>实际发布文案</span>

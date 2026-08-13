@@ -1,4 +1,5 @@
 import { AgentConsole } from "@/app/components/agent-console";
+import { DailyFollowUpPanel } from "@/app/components/daily-follow-up-panel";
 import { createAppDesk } from "@/server/create-app-desk";
 import { horizonRuntimeReady } from "@/server/horizon-worker";
 import { getEffectiveRuntimeConfig } from "@/server/runtime-config";
@@ -32,5 +33,5 @@ export default async function RadarPage() {
           : dashboard.systemStatus.mind.state !== "connected"
             ? "请先连接 Mind"
             : undefined;
-  return <AgentConsole enabled={enabled} initialJob={store.getLatestRadarJob()} latestRadar={dashboard.latestRadar} readinessMessage={readinessMessage} sources={sources} />;
+  return <><AgentConsole enabled={enabled} initialJob={store.getLatestRadarJob()} latestRadar={dashboard.latestRadar} readinessMessage={readinessMessage} sources={sources} /><DailyFollowUpPanel mindConnected={dashboard.systemStatus.mind.state === "connected"} scheduler={dashboard.systemStatus.scheduler} /></>;
 }

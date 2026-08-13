@@ -1,0 +1,16 @@
+{
+  "requestId": "setup-example-001",
+  "profile": {
+    "positioning": "聚焦 AI、科技与商业的可信内容",
+    "audience": "希望快速理解行业变化的创作者与专业读者",
+    "voice": "专业、简洁、证据优先",
+    "boundaries": "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布"
+  },
+  "automation": {
+    "enabled": true,
+    "platform": "x",
+    "outputCount": 1,
+    "focus": "AI Agent 与创作者经济",
+    "dailyTime": "09:00"
+  }
+}

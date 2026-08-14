@@ -4,7 +4,36 @@ A persistent, human-in-the-loop content intelligence agent for creators. A Mind 
 
 Built for **Creative Minds Jam #1 — Audience Growth & Engagement**.
 
-![X News Toolbox signal radar](docs/qa/demo-radar-desktop.png)
+## Mind-first 调用流程
+
+> 定时器只负责唤醒；Mind 负责决定是否扫描、扫描什么、选择哪些内容以及如何写作。
+
+```mermaid
+sequenceDiagram
+    participant S as 定时器
+    participant M as Mind
+    participant H as Horizon
+    participant A as Agent Host
+    participant C as 创作者
+    participant D as SQLite
+
+    S->>A: 唤醒到期任务
+    A->>D: 领取任务，防止重复运行
+    A->>M: 发送创作者资料、已批准记忆和锁定配置
+    M-->>A: 返回 scan / skip 计划
+    alt skip
+        A->>D: 保存跳过理由和 checkpoint
+    else scan
+        A->>H: 按 Mind focus 采集真实信息
+        H-->>A: 返回候选、来源、时间与证据
+        A->>M: 请求排序和单平台草稿
+        M-->>A: 返回选题、草稿、usedMemoryIds 和影响说明
+        A->>D: 校验并保存待审核内容
+        A-->>C: 展示草稿、来源和记忆影响
+        C->>A: 批准、修改或拒绝
+        A->>D: 保存审核和学习记录
+    end
+```
 
 ## The problem it solves
 

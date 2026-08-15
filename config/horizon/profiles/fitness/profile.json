@@ -1,0 +1,41 @@
+{
+  "id": "fitness",
+  "name": "Fitness and Wellness News",
+  "display_names": {
+    "zh": "健身与健康趋势"
+  },
+  "content": {
+    "analysis_max_chars": 12000,
+    "enrichment_max_chars": 16000,
+    "sampling": "head-middle-tail"
+  },
+  "match": "match.md",
+  "analysis": "analysis.md",
+  "enrichment": {
+    "prompt": "enrichment.md",
+    "blocks": [
+      {
+        "id": "summary",
+        "type": "section",
+        "tools": [],
+        "primary": true
+      },
+      {
+        "id": "evidence",
+        "type": "section",
+        "tools": ["web_search"]
+      },
+      {
+        "id": "creator_angle",
+        "type": "section",
+        "tools": []
+      },
+      {
+        "id": "limitations",
+        "type": "section",
+        "tools": ["web_search"],
+        "optional": true
+      }
+    ]
+  }
+}

@@ -19,10 +19,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok, readyForAutonomy, configuration]
+                required: [ok, readyForAutonomy, agentContract, configuration]
                 properties:
                   ok: { type: boolean }
                   readyForAutonomy: { type: boolean }
+                  agentContract:
+                    $ref: "#/components/schemas/PublicAgentContract"
                   configuration:
                     type: object
                     required: [mindConfigured, mindConnected, creatorProfileConfigured, horizonConfigured, xConfigured, cronAuthenticationConfigured]
@@ -33,6 +35,10 @@ paths:
                       horizonConfigured: { type: boolean }
                       xConfigured: { type: boolean }
                       cronAuthenticationConfigured: { type: boolean }
+                  run:
+                    oneOf:
+                      - type: "null"
+                      - $ref: "#/components/schemas/PublicRunStatus"
   /api/agent/configure:
     post:
       operationId: configureAgentPreferences
@@ -65,6 +71,54 @@ components:
       type: http
       scheme: bearer
   schemas:
+    GateResult:
+      type: object
+      required: [gate, status, detail]
+      properties:
+        gate: { type: string, enum: [input, evidence, memory, platform, risk, human_review, publication] }
+        status: { type: string, enum: [passed, rejected, pending] }
+        detail: { type: string }
+    PublicAgentContract:
+      type: object
+      required: [version, role, mission, semanticAuthority, businessInterface, priorities, capabilities, prohibitedActions, stages, gates]
+      properties:
+        version: { type: string }
+        role: { type: string }
+        mission: { type: string }
+        semanticAuthority: { type: string, const: MindAuthority }
+        businessInterface:
+          type: array
+          items: { type: string }
+        priorities:
+          type: array
+          items: { type: string }
+        capabilities:
+          type: array
+          items: { type: string }
+        prohibitedActions:
+          type: array
+          items: { type: string }
+        stages:
+          type: array
+          items: { type: string }
+        gates:
+          type: array
+          items: { type: string }
+    PublicRunStatus:
+      type: object
+      required: [id, status, stage, message, gateResults]
+      properties:
+        id: { type: string }
+        status: { type: string }
+        stage: { type: string }
+        message: { type: string }
+        heartbeatAt: { type: string }
+        errorType: { type: string }
+        contractVersion: { type: string }
+        gateResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/GateResult"
     AgentConfiguration:
       type: object
       additionalProperties: false

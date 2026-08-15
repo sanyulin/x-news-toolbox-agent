@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { z } from "zod";
 
 import type { RadarSignal } from "@/core/creator-desk";
@@ -5,6 +7,19 @@ import type { HorizonRuntimeConfig } from "@/server/runtime-config";
 import type { SourceRecord } from "@/server/workspace-data";
 
 export const HORIZON_COMMIT = "80bde6db03008678111fb627b471792c7ac05a94";
+
+export type HorizonProfileId = "tech-news" | "fitness";
+
+export function resolveHorizonProfile(focus?: string): HorizonProfileId {
+  const value = focus?.trim().toLowerCase() ?? "";
+  return /fitness|strength|mobility|recovery|fat loss|wellness|exercise|健身|力量训练|运动|减脂|康复|健康/u.test(value)
+    ? "fitness"
+    : "tech-news";
+}
+
+function customProfileDirectory() {
+  return resolve(process.cwd(), "config", "horizon", "profiles");
+}
 
 const itemSchema = z.object({
   id: z.string(),
@@ -20,15 +35,17 @@ const itemSchema = z.object({
   ai_tags: z.array(z.string()).optional(),
 });
 
-export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: SourceRecord[]) {
+export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: SourceRecord[], focus?: string) {
   if (!settings.provider || !settings.model) throw new Error("请先配置 Horizon AI 服务商和模型");
+  const profile = resolveHorizonProfile(focus);
+  const customProfiles = profile === "fitness";
   const rss = sources
     .filter((source) => source.enabled && ["rss", "atom", "rsshub"].includes(source.type))
     .map((source) => ({
       name: source.name,
       url: source.locator,
       enabled: true,
-      profile: "tech-news",
+      profile,
     }));
 
   return {
@@ -48,10 +65,10 @@ export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: Sou
       languages: ["zh", "en"],
     },
     processing: {
-      profiles_dir: "profiles",
-      default_profile: "tech-news",
+      profiles_dir: customProfiles ? customProfileDirectory() : "profiles",
+      default_profile: profile,
       profile_settings: {
-        "tech-news": { threshold: settings.threshold, topic_dedup: true },
+        [profile]: { threshold: settings.threshold, topic_dedup: true },
       },
     },
     display: { icon_style: "ascii" },
@@ -62,7 +79,7 @@ export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: Sou
         enabled: settings.hackerNews,
         fetch_top_stories: 20,
         min_score: 50,
-        profile: "tech-news",
+        profile: customProfiles ? "auto" : "tech-news",
       },
       ossinsight: {
         enabled: settings.ossInsight,
@@ -71,7 +88,7 @@ export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: Sou
         keywords: [],
         min_stars: 10,
         max_items: 30,
-        profile: "tech-news",
+        profile: customProfiles ? "auto" : "tech-news",
       },
       reddit: { enabled: false, subreddits: [], users: [], fetch_comments: 0 },
       telegram: { enabled: false, channels: [] },
@@ -83,7 +100,9 @@ export function createHorizonConfig(settings: HorizonRuntimeConfig, sources: Sou
     collection: { time_window_hours: settings.hours },
     digest: {
       max_items: 20,
-      profile_order: ["tech-news", "tech-blog", "finance-news", "ai-creator"],
+      profile_order: customProfiles
+        ? ["fitness"]
+        : ["tech-news", "tech-blog", "finance-news", "ai-creator"],
       category_groups: {},
       default_group: "other",
       default_group_limit: null,

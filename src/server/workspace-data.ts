@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { CREATOR_AGENT_CONTRACT_VERSION, type AgentGateResult } from "@/core/agent-contract";
 import type { PlatformId, RadarSignal } from "@/core/creator-desk";
 
 export type SourceType = "rss" | "atom" | "json" | "rsshub" | "x-account";
@@ -21,6 +22,7 @@ export type RadarJobStage =
 export type RunStage = "queued" | "collecting" | "ranking" | "researching" | "drafting" | "waiting_review" | "completed" | "failed_retryable" | "failed_terminal";
 
 export interface RunCheckpoint {
+  contractVersion?: string;
   stage: RunStage;
   startedAt: string;
   completedAt?: string;
@@ -30,10 +32,12 @@ export interface RunCheckpoint {
   mindDecisionId?: string;
   usedMemoryIds?: string[];
   executionMode: "live" | "replay" | "demo";
+  gateResults?: AgentGateResult[];
   error?: string;
 }
 
 export interface RadarJobRecord {
+  contractVersion?: string;
   id: string;
   commandId: string;
   sourceIds: string[];
@@ -63,6 +67,7 @@ export interface RadarJobRecord {
   evidenceVersion?: string;
   platformDraftId?: string;
   checkpoints?: RunCheckpoint[];
+  gateResults?: AgentGateResult[];
 }
 
 export interface SourceRecord {
@@ -177,18 +182,22 @@ export function createWorkspaceDataStore(
       const current = this.getRadarJob(id);
       if (!current) return undefined;
       const now = new Date().toISOString();
+      const contractVersion = patch.contractVersion ?? current.contractVersion ?? CREATOR_AGENT_CONTRACT_VERSION;
+      const gateResults = patch.gateResults
+        ? mergeGateResults(current.gateResults ?? [], patch.gateResults)
+        : current.gateResults;
       const checkpoints = [...(current.checkpoints ?? [])];
       if (patch.runStage) {
         const last = checkpoints.at(-1);
         if (!last || last.stage !== patch.runStage) {
           if (last && !last.completedAt) checkpoints[checkpoints.length - 1] = { ...last, completedAt: now, heartbeatAt: patch.heartbeatAt ?? now };
           const terminal = patch.runStage === "completed" || patch.runStage === "failed_retryable" || patch.runStage === "failed_terminal";
-          checkpoints.push({ stage: patch.runStage, startedAt: now, completedAt: terminal ? patch.completedAt ?? now : undefined, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? current.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? current.evidenceVersion, mindDecisionId: patch.mindDecisionId, usedMemoryIds: patch.usedMemoryIds, executionMode: patch.executionMode ?? current.executionMode ?? "live", error: patch.error });
+          checkpoints.push({ contractVersion, stage: patch.runStage, startedAt: now, completedAt: terminal ? patch.completedAt ?? now : undefined, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? current.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? current.evidenceVersion, mindDecisionId: patch.mindDecisionId, usedMemoryIds: patch.usedMemoryIds, executionMode: patch.executionMode ?? current.executionMode ?? "live", gateResults, error: patch.error });
         } else {
-          checkpoints[checkpoints.length - 1] = { ...last, completedAt: patch.completedAt ?? last.completedAt, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? last.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? last.evidenceVersion, mindDecisionId: patch.mindDecisionId ?? last.mindDecisionId, usedMemoryIds: patch.usedMemoryIds ?? last.usedMemoryIds, executionMode: patch.executionMode ?? last.executionMode, error: patch.error ?? last.error };
+          checkpoints[checkpoints.length - 1] = { ...last, contractVersion, completedAt: patch.completedAt ?? last.completedAt, heartbeatAt: patch.heartbeatAt ?? now, inputSnapshot: patch.inputSnapshot ?? last.inputSnapshot, evidenceVersion: patch.evidenceVersion ?? last.evidenceVersion, mindDecisionId: patch.mindDecisionId ?? last.mindDecisionId, usedMemoryIds: patch.usedMemoryIds ?? last.usedMemoryIds, executionMode: patch.executionMode ?? last.executionMode, gateResults, error: patch.error ?? last.error };
         }
       }
-      return this.saveRadarJob({ ...current, ...patch, checkpoints, updatedAt: now });
+      return this.saveRadarJob({ ...current, ...patch, contractVersion, gateResults, checkpoints, updatedAt: now });
     },
 
     listCreatorTests(): CreatorTestRecord[] {
@@ -355,6 +364,12 @@ export function createWorkspaceDataStore(
       });
     },
   };
+}
+
+function mergeGateResults(current: AgentGateResult[], updates: AgentGateResult[]) {
+  const merged = new Map(current.map((result) => [result.gate, result]));
+  for (const result of updates) merged.set(result.gate, result);
+  return [...merged.values()];
 }
 
 function withDatabase<T>(databasePath: string, action: (database: DatabaseSync) => T): T {

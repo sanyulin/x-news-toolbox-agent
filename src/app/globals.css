@@ -532,13 +532,14 @@ a {
 .inbox-meta { display: flex; flex-wrap: wrap; gap: 12px; }
 .mind-plan-summary, .status-detail { padding: 20px; }
 .mind-plan-summary p { margin: 8px 0; }
-.status-overview { display: grid; grid-template-columns: repeat(3, 1fr); padding: 20px; }
+.status-overview { display: grid; grid-template-columns: repeat(4, 1fr); padding: 20px; }
 .status-overview div { display: grid; gap: 6px; padding: 0 20px; border-right: 1px solid var(--line); }
 .status-overview div:first-child { padding-left: 0; }
 .status-overview div:last-child { padding-right: 0; border-right: 0; }
 .status-overview span, .status-detail dt { color: var(--muted); font-size: 12px; }
 .status-detail h3 { margin-top: 0; }
 .status-detail dl { display: grid; grid-template-columns: 110px 1fr; gap: 10px; }
+.status-detail dl > div { display: contents; }
 .status-detail dd { margin: 0; }
 .settings-section { padding: 18px 20px; }
 .settings-section > summary { cursor: pointer; font-weight: 700; }

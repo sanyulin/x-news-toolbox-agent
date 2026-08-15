@@ -28,12 +28,14 @@ interface HorizonRuntimeManifest {
 export async function collectHorizonSignals({
   settings,
   sources,
+  focus,
   client,
   configPath = horizonConfigPath(),
   progress = () => undefined,
 }: {
   settings: HorizonRuntimeConfig;
   sources: SourceRecord[];
+  focus?: string;
   client?: HorizonToolClient;
   configPath?: string;
   progress?: (stage: HorizonStage) => void | Promise<void>;
@@ -41,7 +43,7 @@ export async function collectHorizonSignals({
   if (!settings.enabled) throw new Error("Horizon 雷达尚未启用");
   if (settings.provider !== "ollama" && !settings.apiKey) throw new Error("请先配置 Horizon AI API Key");
 
-  saveHorizonConfig(createHorizonConfig(settings, sources), configPath);
+  saveHorizonConfig(createHorizonConfig(settings, sources, focus), configPath);
   const worker = client ?? await createHorizonMcpClient(settings);
   try {
     await progress("validating");
@@ -139,7 +141,7 @@ export async function createHorizonMcpClient(settings: HorizonRuntimeConfig): Pr
   });
   transport.stderr?.on("data", (chunk) => {
     const line = redact(String(chunk));
-    if (/(warning|error|failed|429)/i.test(line)) diagnostics.push(line.slice(0, 500));
+    if (isUsefulDiagnostic(line)) diagnostics.push(line.slice(0, 500));
   });
   const client = new Client({ name: "x-news-toolbox", version: "0.1.0" });
   await client.connect(transport);
@@ -283,6 +285,14 @@ function redact(value: string) {
     .replace(/[A-Za-z]:\\[^\r\n]+/g, "[本机路径]")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function isUsefulDiagnostic(value: string) {
+  if (!value || !/(warning|error|failed|429)/i.test(value)) return false;
+  // Python can emit a source-code fragment such as `warnings.warn(` on stderr.
+  // It is an implementation detail, not an actionable worker warning.
+  if (/warnings\.warn\(\s*$/i.test(value)) return false;
+  return true;
 }
 
 function readString(value: unknown) {

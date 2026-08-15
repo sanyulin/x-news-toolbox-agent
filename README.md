@@ -81,6 +81,10 @@ The scheduler controls only time. Horizon and local tools execute collection, pe
 
 The application remains responsible for source ingestion, local persistence, permission boundaries, human review, and audit records.
 
+## Versioned Agent governance
+
+Every new run records the `1.0.0` Agent Contract together with deterministic input, evidence, memory, platform, risk, human-review, and publication gates. The status and proof pages expose those results, so a creator or judge can see why automation continued, stopped, or required human action. Existing SQLite checkpoints remain the single run ledger; no second Agent runtime or memory database is introduced.
+
 ## Tech stack
 
 - Next.js 16, React 19, and TypeScript

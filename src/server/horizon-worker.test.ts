@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { collectHorizonSignals, horizonToolTimeout, probeHorizonAi, type HorizonStage, type HorizonToolClient } from "./horizon-worker";
+import { collectHorizonSignals, horizonToolTimeout, isUsefulDiagnostic, probeHorizonAi, type HorizonStage, type HorizonToolClient } from "./horizon-worker";
 
 const configPath = join(tmpdir(), `horizon-config-${crypto.randomUUID()}.json`);
 
@@ -13,6 +13,12 @@ afterEach(() => {
 });
 
 describe("Horizon worker pipeline", () => {
+  it("过滤 Python 源码片段，但保留可行动的 worker 诊断", () => {
+    expect(isUsefulDiagnostic("[本机路径] warnings.warn(")).toBe(false);
+    expect(isUsefulDiagnostic("HTTP 429 rate limit")).toBe(true);
+    expect(isUsefulDiagnostic("")).toBe(false);
+  });
+
   it("为 AI 阶段提供足够等待时间", () => {
     expect(horizonToolTimeout("hz_score_items")).toBe(300_000);
     expect(horizonToolTimeout("hz_enrich_items")).toBe(300_000);

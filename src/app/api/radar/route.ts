@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const requestSchema = z.object({
   commandId: z.string().min(8).max(100),
-  focus: z.string().trim().min(2).max(100).optional(),
+  focus: z.string().trim().min(2).max(240).optional(),
   sourceIds: z.array(z.string().min(8).max(100)).max(50).default([]),
 });
 

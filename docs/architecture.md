@@ -32,6 +32,14 @@ flowchart LR
 - Daily Follow-up：单例 SQLite Job 负责到时唤醒 Mind；用户锁定平台、关注方向与输出上限，Mind 决定扫描或跳过、明确本轮 focus 和实际输出数。worker 只执行允许动作，原子领取避免重复运行。
 - Next.js 页面与 API：默认只呈现今日内容、运行状态和设置；受限 Tool API 供部署后的 Mind App 调用，不在浏览器暴露密钥。
 
+## Agent Governance Contract
+
+- `src/core/agent-contract.ts` 是唯一版本化治理契约，描述 Mind 的使命、能力、禁止动作、运行阶段和验收门。
+- 契约不是第二套 Agent runtime。`CreatorDesk` 仍是唯一业务入口，`MindAuthority` 仍是唯一语义主体。
+- 现有 `RunCheckpoint` 同时承担结构化阶段交接，保存 `contractVersion` 和累积 `gateResults`；不新增工作流数据库。
+- 输入、证据、记忆、平台、风险、人工审核和发布边界以确定性结果写入 SQLite。模型不能通过文字声称绕过未通过的验收门。
+- 旧运行记录可读取；下一次状态更新会补写当前契约版本，保持增量兼容。
+
 ## 真实运行规则
 
 - 手动雷达与每日任务使用同一套 Horizon/JSON/X 真实来源流水线；阶段状态持久化到 SQLite，刷新页面仍可查看。

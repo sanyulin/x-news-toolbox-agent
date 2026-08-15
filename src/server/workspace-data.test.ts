@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { CREATOR_AGENT_CONTRACT_VERSION } from "@/core/agent-contract";
 import { createWorkspaceDataStore, summarizeCreatorTests, type CreatorTestRecord, type StyleProfileRecord } from "@/server/workspace-data";
 
 const databasePath = join(tmpdir(), `x-news-toolbox-workspace-${process.pid}.sqlite`);
@@ -91,6 +92,18 @@ describe("workspace data store", () => {
     expect(checkpoints.map((checkpoint) => checkpoint.stage)).toEqual(["queued", "collecting", "ranking", "completed"]);
     expect(checkpoints.slice(0, 3).every((checkpoint) => Boolean(checkpoint.completedAt))).toBe(true);
     expect(checkpoints[2].mindDecisionId).toBe("decision-1");
+  });
+
+  it("upgrades old run records with the current contract and merges gate evidence", () => {
+    const store = createWorkspaceDataStore(databasePath);
+    store.saveRadarJob({ id: "job-contract", commandId: "command-contract", sourceIds: [], stage: "queued", status: "running", message: "等待", createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z" });
+    store.updateRadarJob("job-contract", { runStage: "collecting", gateResults: [{ gate: "input", status: "passed", detail: "输入有效" }] });
+    store.updateRadarJob("job-contract", { runStage: "ranking", gateResults: [{ gate: "evidence", status: "passed", detail: "来源可追溯" }] });
+
+    const job = store.getRadarJob("job-contract")!;
+    expect(job.contractVersion).toBe(CREATOR_AGENT_CONTRACT_VERSION);
+    expect(job.gateResults?.map((result) => result.gate)).toEqual(["input", "evidence"]);
+    expect(job.checkpoints?.every((checkpoint) => checkpoint.contractVersion === CREATOR_AGENT_CONTRACT_VERSION)).toBe(true);
   });
 
   it("summarizes real creator validation with a true even-count median", () => {

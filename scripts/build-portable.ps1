@@ -43,6 +43,10 @@ try {
   if (Test-Path -LiteralPath (Join-Path $projectRoot "public")) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "public") -Destination $outputDir -Recurse -Force
   }
+  if (Test-Path -LiteralPath (Join-Path $projectRoot "config\horizon")) {
+    New-Item -ItemType Directory -Path (Join-Path $outputDir "config") -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot "config\horizon") -Destination (Join-Path $outputDir "config") -Recurse -Force
+  }
   Copy-Item -LiteralPath $NodeExe -Destination (Join-Path $outputDir "node.exe")
   Copy-Item -LiteralPath $launcherTemplate -Destination $outputDir
   Copy-Item -LiteralPath $readmeTemplate -Destination $outputDir

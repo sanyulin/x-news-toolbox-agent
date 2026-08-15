@@ -71,16 +71,16 @@ export interface MindsMindAuthority {
 
 const CONFIG_GUIDANCE = "设置 MINDS_BUILDER_API_KEY 后连接核心 Mind";
 const radarReplySchema = z.object({
-  rationale: z.string().trim().min(4).max(600),
+  rationale: z.string().trim().min(4).max(1_500),
   usedMemoryIds: z.array(z.string()).max(5).default([]),
-  memoryInfluence: z.string().trim().max(600).default("本轮未使用长期记忆。"),
-  memoryConflicts: z.array(z.string().trim().min(2).max(240)).max(5).default([]),
+  memoryInfluence: z.string().trim().max(1_000).default("本轮未使用长期记忆。"),
+  memoryConflicts: z.array(z.string().trim().min(2).max(600)).max(5).default([]),
   rankedSignals: z
     .array(
       z.object({
         signalId: z.string().min(1),
         relevanceScore: z.number().min(0).max(1),
-        why: z.string().trim().min(2).max(240),
+        why: z.string().trim().min(2).max(800),
         recommendation: z.enum(["write", "watch", "skip"]),
       }),
     )

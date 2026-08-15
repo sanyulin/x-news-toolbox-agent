@@ -40,4 +40,16 @@ describe("POST /api/radar", () => {
     expect(response.status).toBe(400);
     expect(startMock).not.toHaveBeenCalled();
   });
+
+  it("accepts a descriptive focus up to the shared 240-character limit", async () => {
+    const focus = `Fitness trends for busy adults: ${"strength, mobility, recovery, and fat loss. ".repeat(3)}`.slice(0, 180).trim();
+    const response = await POST(new Request("http://localhost/api/radar", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ commandId: "command-456", sourceIds: ["source-123"], focus }),
+    }));
+
+    expect(response.status).toBe(202);
+    expect(startMock).toHaveBeenCalledWith({ commandId: "command-456", sourceIds: ["source-123"], focus });
+  });
 });

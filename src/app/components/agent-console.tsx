@@ -102,7 +102,7 @@ export function AgentConsole({
 
         <label className="field">
           <span>分析重点（可选）</span>
-          <input maxLength={100} onChange={(event) => setFocus(event.target.value)} placeholder="可选，例如：AI 创作者增长" value={focus} />
+          <input maxLength={240} onChange={(event) => setFocus(event.target.value)} placeholder="可选，例如：AI 创作者增长" value={focus} />
         </label>
 
         <div className="form-footer">

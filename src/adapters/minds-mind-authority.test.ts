@@ -100,7 +100,7 @@ describe("Minds 能力 Adapter", () => {
           messageId: "message-001",
           fingerprint: "fingerprint-001",
           messageText: JSON.stringify({
-            rationale: "这个主题最贴近创业者当前决策。",
+            rationale: "这个主题最贴近创业者当前决策。" + "它还包含足够的证据、受众匹配和限制说明，应该保留完整解释。".repeat(12),
             usedMemoryIds: ["memory-x-1"],
             memoryInfluence: "根据已确认偏好提高证据型选题的优先级。",
             memoryConflicts: ["新信号与旧的短期假设存在冲突。"],
@@ -108,7 +108,7 @@ describe("Minds 能力 Adapter", () => {
               {
                 signalId: "signal-1",
                 relevanceScore: 0.93,
-                why: "提供清晰的商业判断",
+                why: "提供清晰的商业判断，并说明证据强度、受众匹配、局限与下一步核验方向。".repeat(5),
                 recommendation: "write",
               },
             ],

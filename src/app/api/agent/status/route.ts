@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { CREATOR_AGENT_CONTRACT } from "@/core/agent-contract";
 import { createAppDesk } from "@/server/create-app-desk";
 import { authorizeAgentTool } from "@/server/agent-tool-auth";
 import { getPublicRuntimeConfig } from "@/server/runtime-config";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   const mindConnected = dashboard.systemStatus.mind.state === "connected";
   return NextResponse.json({
     ok: true,
+    agentContract: CREATOR_AGENT_CONTRACT,
     readyForAutonomy:
       dashboard.systemStatus.database.state === "ready" &&
       mindConnected &&
@@ -42,6 +44,8 @@ export async function GET(request: Request) {
       message: run.message,
       heartbeatAt: run.heartbeatAt,
       errorType: run.errorType,
+      contractVersion: run.contractVersion,
+      gateResults: run.gateResults ?? [],
     } : null,
   }, { headers: { "Cache-Control": "no-store" } });
 }

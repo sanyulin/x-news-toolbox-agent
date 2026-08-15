@@ -1,4 +1,12 @@
 import type { PlatformId, SignalSource } from "@/core/creator-desk";
+import {
+  CREATOR_AGENT_CONTRACT_VERSION,
+  buildEvidenceGateResult,
+  buildInputGateResult,
+  buildMemoryGateResult,
+  buildPlatformGateResults,
+  buildReviewGateResults,
+} from "@/core/agent-contract";
 import { createAppDesk } from "@/server/create-app-desk";
 import type { HorizonStage } from "@/server/horizon-worker";
 import { collectRadarSignals } from "@/server/radar-signal-source";
@@ -13,6 +21,7 @@ export function startRadarJob(input: { commandId: string; sourceIds: string[]; f
   if (existing?.commandId === input.commandId || existing?.status === "running") return existing;
   const now = new Date().toISOString();
   const job: RadarJobRecord = {
+    contractVersion: CREATOR_AGENT_CONTRACT_VERSION,
     id: crypto.randomUUID(),
     commandId: input.commandId,
     sourceIds: input.sourceIds,
@@ -27,7 +36,8 @@ export function startRadarJob(input: { commandId: string; sourceIds: string[]; f
     heartbeatAt: now,
     retryCount: 0,
     executionMode: "live",
-    checkpoints: [{ stage: "queued", startedAt: now, heartbeatAt: now, inputSnapshot: { sourceIds: input.sourceIds, focus: input.focus }, executionMode: "live" }],
+    gateResults: [{ gate: "input", status: "pending", detail: "等待检查运行配置与信息来源" }],
+    checkpoints: [{ contractVersion: CREATOR_AGENT_CONTRACT_VERSION, stage: "queued", startedAt: now, heartbeatAt: now, inputSnapshot: { sourceIds: input.sourceIds, focus: input.focus }, executionMode: "live", gateResults: [{ gate: "input", status: "pending", detail: "等待检查运行配置与信息来源" }] }],
   };
   store.saveRadarJob(job);
   queueMicrotask(() => void runRadarJob(job.id).catch(() => undefined));
@@ -44,12 +54,18 @@ export async function runRadarJob(jobId: string) {
     const config = getEffectiveRuntimeConfig();
     if (!config.horizon?.enabled) throw new Error("请先在接口设置中启用 Horizon 雷达");
     const selected = store.getSources(job.sourceIds);
+    if (!selected.length) throw new Error("请先配置并启用至少一个信息来源");
+    store.updateRadarJob(jobId, {
+      runStage: "collecting",
+      heartbeatAt: new Date().toISOString(),
+      gateResults: [buildInputGateResult(true, `运行配置有效，已启用 ${selected.length} 个信息来源`)],
+    });
     const checkpoint = readRadarCollectionCheckpoint(job);
     const collection = checkpoint
       ? checkpoint
       : await collectRadarSignals(selected, (stage) => {
           store.updateRadarJob(jobId, { stage, runStage: stage === "enriching" || stage === "reading" ? "researching" : "collecting", heartbeatAt: new Date().toISOString(), message: stageMessage(stage) });
-        });
+        }, job.focus);
     if (!checkpoint) store.updateRadarJob(jobId, { collectedSignals: collection.signals, collectionWarnings: collection.warnings });
     store.updateRadarJob(jobId, { stage: "mind", runStage: "ranking", heartbeatAt: new Date().toISOString(), message: "Mind 正在进行创作者相关性判断" });
     const source: SignalSource = { collect: async () => collection };
@@ -70,6 +86,10 @@ export async function runRadarJob(jobId: string) {
       radarOperationId: receipt.operationId,
       mindDecisionId: receipt.mindDecision?.decisionId,
       usedMemoryIds: receipt.mindDecision?.usedMemoryIds,
+      gateResults: [
+        buildEvidenceGateResult(collection.signals.length),
+        buildMemoryGateResult(receipt.mindDecision?.usedMemoryIds ?? []),
+      ],
       runStage: "completed",
       completedAt: new Date().toISOString(),
       heartbeatAt: new Date().toISOString(),
@@ -91,6 +111,9 @@ export async function runRadarJob(jobId: string) {
         ? store.getRadarJob(jobId)?.collectedSignals?.length ? "ranking" : "collecting"
         : undefined,
       heartbeatAt: new Date().toISOString(),
+      gateResults: errorType === "configuration"
+        ? [buildInputGateResult(false, safeError(error))]
+        : undefined,
     });
   } finally {
     running.delete(jobId);
@@ -127,6 +150,7 @@ export function beginPlatformDraftStage(input: {
     platform: input.platform,
     platformMode: input.platformMode,
     evidenceVersion: input.evidenceVersion,
+    gateResults: [{ gate: "evidence", status: "passed", detail: `草稿绑定证据版本 ${input.evidenceVersion}` }],
     inputSnapshot: { ...job.inputSnapshot, sourceIds: job.sourceIds, focus: job.focus, proposalId: input.proposalId, platform: input.platform, evidenceVersion: input.evidenceVersion },
     heartbeatAt: new Date().toISOString(),
     completedAt: undefined,
@@ -147,6 +171,7 @@ export function completePlatformDraftStage(jobId: string | undefined, input: { p
     platformDraftId: input.platformDraftId,
     mindDecisionId: input.mindDecisionId,
     usedMemoryIds: input.usedMemoryIds,
+    gateResults: buildPlatformGateResults(input.valid),
     heartbeatAt: now,
     error: undefined,
     errorType: undefined,
@@ -181,6 +206,7 @@ export function completeReviewStage(proposalId: string, decision: "approve" | "r
     runStage: decision === "request_changes" ? "waiting_review" : "completed",
     message: decision === "request_changes" ? "创作者要求修改，等待重新生成并审核" : "创作者审核已完成",
     inputSnapshot: { ...job.inputSnapshot, sourceIds: job.sourceIds, focus: job.focus, reviewDecision: decision },
+    gateResults: buildReviewGateResults(decision),
     heartbeatAt: now,
     completedAt: decision === "request_changes" ? undefined : now,
     nextResumeStage: undefined,

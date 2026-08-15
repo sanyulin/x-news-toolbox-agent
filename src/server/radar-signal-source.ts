@@ -11,12 +11,13 @@ export function createRadarSignalSource({
   sources: SourceRecord[];
   progress?: (stage: HorizonStage) => void | Promise<void>;
 }): SignalSource {
-  return { collect: () => collectRadarSignals(sources, progress) };
+  return { collect: ({ focus }) => collectRadarSignals(sources, progress, focus) };
 }
 
 export async function collectRadarSignals(
   sources: SourceRecord[],
   progress: (stage: HorizonStage) => void | Promise<void> = () => undefined,
+  focus?: string,
 ): Promise<SignalCollection> {
   const config = getEffectiveRuntimeConfig();
   const batches: SignalCollection[] = [];
@@ -25,7 +26,7 @@ export async function collectRadarSignals(
   if (config.horizon?.enabled) {
     const horizonSources = sources.filter((source) => ["rss", "atom", "rsshub"].includes(source.type));
     try {
-      batches.push(await collectHorizonSignals({ settings: config.horizon, sources: horizonSources, progress }));
+      batches.push(await collectHorizonSignals({ settings: config.horizon, sources: horizonSources, focus, progress }));
     } catch (error) {
       warnings.push(safeError(error));
     }

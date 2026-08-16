@@ -165,6 +165,56 @@ describe("Minds 能力 Adapter", () => {
     expect(client.sendMessage.mock.calls[0][0].messageText).toContain("不自动发布");
   });
 
+  it("串行化同一 Mind 会话，避免自动计划与雷达回复串线", async () => {
+    let activeReplies = 0;
+    let maxActiveReplies = 0;
+    const pendingMessages: string[] = [];
+    const client = {
+      listMinds: vi.fn().mockResolvedValue([{ mindId: "mind-b", name: "创作者主脑" }]),
+      ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
+      getLatestHistoryFingerprint: vi.fn().mockResolvedValue(undefined),
+      sendMessage: vi.fn().mockImplementation(async ({ messageText }: { messageText: string }) => {
+        pendingMessages.push(messageText);
+      }),
+      waitForReply: vi.fn().mockImplementation(async () => {
+        activeReplies += 1;
+        maxActiveReplies = Math.max(maxActiveReplies, activeReplies);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const messageText = pendingMessages.shift() ?? "";
+        const signalId = JSON.parse(messageText.split("候选信号：")[1] ?? "[]")[0]?.id ?? "signal-1";
+        activeReplies -= 1;
+        return {
+          timedOut: false,
+          reply: {
+            messageId: `reply-${signalId}`,
+            messageText: JSON.stringify({
+              rationale: "按创作者基线完成排序。",
+              usedMemoryIds: [],
+              memoryInfluence: "本轮未使用长期记忆。",
+              memoryConflicts: [],
+              rankedSignals: [{ signalId, relevanceScore: 0.8, why: "与当前创作者方向相关。", recommendation: "watch" }],
+            }),
+          },
+        };
+      }),
+    };
+    const makeAuthority = () => createMindsMindAuthority({ builderApiKey: "builder-key", preferredMindId: "mind-b", conversationAlias: "shared-lock-test", clientFactory: () => client });
+    const makeInput = (signalId: string) => ({
+      asOf: "2026-08-16T00:00:00.000Z",
+      profile: { positioning: "健身", audience: "忙碌成年人", voice: "清楚", version: 1, updatedAt: "2026-08-16T00:00:00.000Z" },
+      signals: [{ id: signalId, title: "测试主题", summary: "测试摘要", sourceName: "测试来源", sourceUrl: "https://example.com", canonicalUrl: "https://example.com", publishedAt: "2026-08-16T00:00:00.000Z", relevanceScore: 0.5, synthetic: false }],
+    });
+
+    const [first, second] = await Promise.all([
+      makeAuthority().rankRadar(makeInput("signal-a")),
+      makeAuthority().rankRadar(makeInput("signal-b")),
+    ]);
+
+    expect(first.rankedSignals[0].signalId).toBe("signal-a");
+    expect(second.rankedSignals[0].signalId).toBe("signal-b");
+    expect(maxActiveReplies).toBe(1);
+  });
+
   it("把内容建议回复校验为绑定证据版本的中英独立草稿", async () => {
     const client = {
       listMinds: vi.fn().mockResolvedValue([

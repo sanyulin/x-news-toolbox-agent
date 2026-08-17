@@ -1,4 +1,5 @@
 .next/
+.netlify/
 dist/
 node_modules/
 .env

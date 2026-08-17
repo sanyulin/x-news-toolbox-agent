@@ -144,10 +144,10 @@ const styleReplySchema = z.object({
 const autonomousPlanReplySchema = z.object({
   action: z.enum(["scan", "skip"]),
   focus: z.string().trim().min(2).max(240),
-  reason: z.string().trim().min(4).max(600),
-  requestedDraftCount: z.number().int().min(1).max(5),
+  reason: z.string().trim().min(4).max(2_000),
+  requestedDraftCount: z.number().int().min(0).max(5),
   usedMemoryIds: z.array(z.string()).max(5).default([]),
-  memoryInfluence: z.string().trim().min(2).max(600),
+  memoryInfluence: z.string().trim().min(2).max(1_000),
   memoryConflicts: z.array(z.string().trim().min(2).max(240)).max(5).default([]),
 });
 

@@ -297,7 +297,7 @@ describe("比赛关键旅程", () => {
       database: { check: async () => ({ ready: true }) },
       mind: {
         inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "主脑" } }),
-        planAutonomousRun: async () => ({ decisionId: "skip-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "skip" as const, focus: "AI 创作者", reason: "今天没有需要重复扫描的新目标。", requestedDraftCount: 1, usedMemoryIds: [], memoryInfluence: "本轮没有可用记忆。", memoryConflicts: [] }),
+        planAutonomousRun: async () => ({ decisionId: "skip-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "skip" as const, focus: "AI 创作者", reason: "今天没有需要重复扫描的新目标。", requestedDraftCount: 0, usedMemoryIds: [], memoryInfluence: "本轮没有可用记忆。", memoryConflicts: [] }),
       },
       workspaceStore: store, profileStore: store, proposalStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
       signalSource: { collect: async () => { collected = true; return []; } },

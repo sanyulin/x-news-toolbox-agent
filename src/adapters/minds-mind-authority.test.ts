@@ -17,6 +17,38 @@ describe("Minds 能力 Adapter", () => {
     expect(client.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ messageText: expect.stringContaining("用户锁定配置") }));
   });
 
+  it("允许 Mind 在 skip 决策中返回 0 条草稿", async () => {
+    const client = {
+      listMinds: vi.fn().mockResolvedValue([{ mindId: "mind-b", name: "创作者主脑" }]),
+      ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
+      getLatestHistoryFingerprint: vi.fn().mockResolvedValue("before-plan"),
+      sendMessage: vi.fn().mockResolvedValue({}),
+      waitForReply: vi.fn().mockResolvedValue({
+        timedOut: false,
+        reply: {
+          messageId: "skip-plan-1",
+          messageText: JSON.stringify({
+            action: "skip",
+            focus: "等待新的证据",
+            reason: "当前信号不足以支持新的草稿。" + "需要等待新的可验证证据。".repeat(100),
+            requestedDraftCount: 0,
+            usedMemoryIds: [],
+            memoryInfluence: "本轮未使用长期记忆。" + "当前仅依据用户锁定配置做保守跳过。".repeat(20),
+            memoryConflicts: [],
+          }),
+        },
+      }),
+    };
+    const authority = createMindsMindAuthority({ builderApiKey: "builder-key", preferredMindId: "mind-b", clientFactory: () => client });
+
+    await expect(authority.planAutonomousRun({
+      asOf: "2026-08-17T03:00:00.000Z",
+      profile: { positioning: "健身", audience: "忙碌成年人", voice: "清楚", version: 1, updatedAt: "2026-08-17T02:00:00.000Z" },
+      memories: [],
+      locked: { platform: "xiaohongshu", maximumDrafts: 1 },
+    })).resolves.toMatchObject({ action: "skip", requestedDraftCount: 0 });
+  });
+
   it("把接受、替代和删除同步到同一稳定 Mind 会话", async () => {
     const client = { listMinds: vi.fn().mockResolvedValue([{ mindId: "mind-b", name: "创作者主脑" }]), ensureConversation: vi.fn().mockResolvedValue({ conversationId: "conv-1" }), getLatestHistoryFingerprint: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn().mockResolvedValue({}), waitForReply: vi.fn() };
     const authority = createMindsMindAuthority({ builderApiKey: "builder-key", preferredMindId: "mind-b", conversationAlias: "creator-main", clientFactory: () => client });

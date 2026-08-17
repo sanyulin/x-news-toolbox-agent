@@ -781,7 +781,10 @@ export function createCreatorDesk(
             },
           });
           validateMemoryUsage(plan.usedMemoryIds, memories);
-          if (plan.requestedDraftCount < 1 || plan.requestedDraftCount > maximumDrafts) {
+          if (
+            plan.requestedDraftCount > maximumDrafts ||
+            (plan.action === "scan" && plan.requestedDraftCount < 1)
+          ) {
             throw new Error("Mind 请求的草稿数量超出用户锁定上限");
           }
           if (plan.usedMemoryIds.length) {

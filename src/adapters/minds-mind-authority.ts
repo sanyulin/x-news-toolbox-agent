@@ -185,6 +185,19 @@ function parsePlatformReply(messageText: string) {
   return parseJsonReply(messageText, "内容建议", platformReplySchema);
 }
 
+function creatorProfileContext(profile: CreatorProfile) {
+  return [
+    "本轮唯一有效的创作者配置如下。若历史对话、Mind 记忆或旧 baseline 与此冲突，必须忽略旧内容，以本配置为准。",
+    `创作者配置版本：${profile.version}`,
+    `CURRENT_CREATOR_PROFILE：${JSON.stringify({
+      positioning: profile.positioning,
+      audience: profile.audience,
+      voice: profile.voice,
+      boundaries: profile.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
+    })}`,
+  ].join("\n");
+}
+
 async function latestHistoryFingerprint(client: ProbeClient, alias: string) {
   if (!client.getHistory) return client.getLatestHistoryFingerprint(alias);
   const rows = await client.getHistory(alias, { limit: 200 });
@@ -273,7 +286,7 @@ export function createMindsMindAuthority(
         "只能返回一个 JSON 对象，不要使用 Markdown。格式：",
         '{"action":"scan|skip","focus":"本轮明确关注方向","reason":"决策理由","requestedDraftCount":1,"usedMemoryIds":["实际使用的 memoryId"],"memoryInfluence":"记忆如何改变计划；未使用则说明原因","memoryConflicts":["冲突；无则空数组"]}',
         `当前时间：${input.asOf}`,
-        `创作者基线：${JSON.stringify(input.profile)}`,
+        creatorProfileContext(input.profile),
         `用户锁定配置：${JSON.stringify(input.locked)}`,
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories)}`,
       ].join("\n");
@@ -353,12 +366,7 @@ export function createMindsMindAuthority(
         '{"rationale":"总体判断","usedMemoryIds":["实际使用的 memoryId"],"memoryInfluence":"记忆怎样改变排序；未使用则说明原因","memoryConflicts":["新证据与旧记忆的具体冲突；无冲突返回空数组"],"rankedSignals":[{"signalId":"原始 id","relevanceScore":0.0,"why":"适合或不适合受众的原因","recommendation":"write|watch|skip"}]}',
         "每个候选 signalId 必须且只能出现一次。",
         `当前时间：${input.asOf}`,
-        `创作者基线：${JSON.stringify({
-          positioning: input.profile.positioning,
-          audience: input.profile.audience,
-          voice: input.profile.voice,
-          boundaries: input.profile.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
-        })}`,
+        creatorProfileContext(input.profile),
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories ?? [])}`,
         `候选信号：${JSON.stringify(
           input.signals.map((signal) => ({
@@ -423,12 +431,7 @@ export function createMindsMindAuthority(
         "必须只返回一个 JSON 对象，不要使用 Markdown。格式：",
         '{"goNoGo":"go|no_go","reason":"判断理由","angle":"表达角度，可在 no_go 时省略","evidenceVersion":"原样返回证据版本","chineseDraft":"go 时必填","englishDraft":"go 时必填","usedMemoryIds":["实际使用的 memoryId"],"memoryInfluence":"记忆怎样影响表达；未使用则说明原因","memoryConflicts":["新证据与旧记忆的冲突；无冲突返回空数组"]}',
         `当前时间：${input.asOf}`,
-        `创作者基线：${JSON.stringify({
-          positioning: input.profile.positioning,
-          audience: input.profile.audience,
-          voice: input.profile.voice,
-          boundaries: input.profile.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
-        })}`,
+        creatorProfileContext(input.profile),
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories ?? [])}`,
         `候选信号：${JSON.stringify({
           id: input.signal.id,
@@ -485,7 +488,7 @@ export function createMindsMindAuthority(
         "必须只返回 JSON，不要使用 Markdown。格式：",
         '{"evidenceVersion":"原样返回","body":"正文","title":"小红书必填","hashtags":["标签"],"coverText":"小红书必填","visualBrief":["小红书2至4条"],"evidenceRefs":["证据 source id"],"usedMemoryIds":["实际使用的 memoryId"],"memoryInfluence":"记忆怎样影响本稿；未使用则说明原因","memoryConflicts":["新证据与旧记忆的具体冲突；无冲突返回空数组"]}',
         `平台：${input.platform}`,
-        `创作者基线：${JSON.stringify(input.profile)}`,
+        creatorProfileContext(input.profile),
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories ?? [])}`,
         `信号：${JSON.stringify(input.signal)}`,
         `证据包：${JSON.stringify(input.evidence)}`,
@@ -526,12 +529,7 @@ export function createMindsMindAuthority(
         "必须只返回一个 JSON 对象，不要使用 Markdown。格式：",
         '{"summary":"观察与限制","suggestedMemory":"下一轮可验证假设","confidence":"low|medium|high"}',
         `当前时间：${input.asOf}`,
-        `创作者基线：${JSON.stringify({
-          positioning: input.profile.positioning,
-          audience: input.profile.audience,
-          voice: input.profile.voice,
-          boundaries: input.profile.boundaries ?? "不伪造事实，不冒充亲身体验，不推断敏感属性，不自动发布",
-        })}`,
+        creatorProfileContext(input.profile),
         `实际发布记录：${JSON.stringify({
           postUrl: input.publication.postUrl,
           actualText: input.publication.actualText,

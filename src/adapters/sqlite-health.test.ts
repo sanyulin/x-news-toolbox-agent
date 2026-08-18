@@ -352,3 +352,31 @@ describe("SQLite 学习更新存储", () => {
     });
   });
 });
+
+describe("SQLite 每日任务领取", () => {
+  it("阻止活跃任务重复领取，并在租约过期后允许恢复", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    await store.configureDailyFollowUp({
+      operationId: "schedule-1",
+      commandId: "schedule-command-1",
+      enabled: true,
+      mode: "real",
+      platform: "xiaohongshu",
+      dailyTime: "10:00",
+      now: "2026-08-18T02:00:00.000Z",
+    });
+
+    await expect(
+      store.claimDueDailyFollowUp({ now: "2026-08-18T02:00:00.000Z" }),
+    ).resolves.toMatchObject({ scheduledFor: "2026-08-18T02:00:00.000Z" });
+    await expect(
+      store.claimDueDailyFollowUp({ now: "2026-08-18T02:10:00.000Z" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      store.claimDueDailyFollowUp({ now: "2026-08-18T02:31:00.000Z" }),
+    ).resolves.toMatchObject({
+      scheduledFor: "2026-08-18T02:00:00.000Z",
+      job: { runState: "running", leaseUntil: "2026-08-18T03:01:00.000Z" },
+    });
+  });
+});

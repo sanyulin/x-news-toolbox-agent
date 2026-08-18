@@ -19,11 +19,16 @@ try {
   if (-not $SkipBuild) {
     & $NodeExe "node_modules\next\dist\bin\next" build
     if ($LASTEXITCODE -ne 0) { throw "Next.js 构建失败" }
+    & $NodeExe "scripts\build-agent.mjs"
+    if ($LASTEXITCODE -ne 0) { throw "Agent CLI 构建失败" }
   }
 
   $standalone = Join-Path $projectRoot ".next\standalone"
   if (-not (Test-Path -LiteralPath (Join-Path $standalone "server.js"))) {
     throw "未找到 .next\standalone\server.js"
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "dist\agent\cli.mjs"))) {
+    throw "未找到 dist\agent\cli.mjs"
   }
 
   $distRoot = Join-Path $projectRoot "dist"
@@ -50,6 +55,11 @@ try {
   Copy-Item -LiteralPath $NodeExe -Destination (Join-Path $outputDir "node.exe")
   Copy-Item -LiteralPath $launcherTemplate -Destination $outputDir
   Copy-Item -LiteralPath $readmeTemplate -Destination $outputDir
+  Copy-Item -LiteralPath (Join-Path $projectRoot "portable\agent.cmd") -Destination $outputDir
+  New-Item -ItemType Directory -Path (Join-Path $outputDir "agent") | Out-Null
+  Copy-Item -LiteralPath (Join-Path $projectRoot "dist\agent\cli.mjs") -Destination (Join-Path $outputDir "agent\cli.mjs")
+  Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\install-agent-schedule.ps1") -Destination $outputDir
+  Copy-Item -LiteralPath (Join-Path $projectRoot "scripts\verify-agent-schedule.ps1") -Destination $outputDir
   New-Item -ItemType Directory -Path (Join-Path $outputDir "data") | Out-Null
 
   $horizonManifestPath = Join-Path $projectRoot ".runtime\horizon.json"

@@ -532,6 +532,8 @@ a {
 .inbox-meta { display: flex; flex-wrap: wrap; gap: 12px; }
 .mind-plan-summary, .status-detail { padding: 20px; }
 .mind-plan-summary p { margin: 8px 0; }
+.run-notice { padding: 20px; border-left: 4px solid var(--success); background: #f7fbf8; }
+.run-notice p { margin: 8px 0; }
 .status-overview { display: grid; grid-template-columns: repeat(4, 1fr); padding: 20px; }
 .status-overview div { display: grid; gap: 6px; padding: 0 20px; border-right: 1px solid var(--line); }
 .status-overview div:first-child { padding-left: 0; }

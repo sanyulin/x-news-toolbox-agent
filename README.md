@@ -123,6 +123,27 @@ The complete split is:
 
 The visual settings page can also store configuration locally. In portable mode, those settings stay inside that portable copy's own `data` directory and do not inherit credentials from the host computer.
 
+## Run as a headless Agent
+
+The production Agent does not require the website or port 3000:
+
+```powershell
+pnpm build:agent
+node dist/agent/cli.mjs validate
+node dist/agent/cli.mjs run-due
+node dist/agent/cli.mjs status
+```
+
+On Windows, preview and then install the daily 10:00 task:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-agent-schedule.ps1 -Preview
+powershell -ExecutionPolicy Bypass -File scripts/install-agent-schedule.ps1
+powershell -ExecutionPolicy Bypass -File scripts/verify-agent-schedule.ps1
+```
+
+The operating system only wakes the CLI. SQLite claims the due task and prevents duplicates; the Mind still decides whether to scan or skip. The in-process Next.js poller is disabled unless `CREATOR_MIND_ENABLE_IN_PROCESS_SCHEDULER=1` is explicitly set.
+
 ## Build the Windows portable edition
 
 ```powershell

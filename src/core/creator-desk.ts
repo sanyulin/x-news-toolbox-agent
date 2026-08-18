@@ -186,6 +186,7 @@ export interface DailyFollowUpJob {
   focus?: string;
   dailyTime?: string;
   runState: "idle" | "running" | "failed";
+  leaseUntil?: string;
   nextRunAt?: string;
   lastRunAt?: string;
   lastRadarOperationId?: string;
@@ -1584,6 +1585,7 @@ export function createCreatorDesk(
                 mode: dailyFollowUp.mode,
                 platform: dailyFollowUp.platform ?? "x",
                 runState: dailyFollowUp.runState,
+                leaseUntil: dailyFollowUp.leaseUntil,
                 nextRunAt: dailyFollowUp.nextRunAt,
                 lastRunAt: dailyFollowUp.lastRunAt,
                 lastRadarOperationId: dailyFollowUp.lastRadarOperationId,

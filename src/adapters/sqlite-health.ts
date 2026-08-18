@@ -897,11 +897,15 @@ export function createSqliteWorkspaceStore(
             .prepare("SELECT job_json FROM daily_follow_up_job WHERE id = 1")
             .get(),
         );
+        const activeLease =
+          current?.runState === "running" &&
+          current.leaseUntil &&
+          current.leaseUntil > input.now;
         if (
           !current?.enabled ||
           !current.nextRunAt ||
           current.nextRunAt > input.now ||
-          current.runState === "running"
+          activeLease
         ) {
           database.exec("COMMIT");
           inTransaction = false;
@@ -911,6 +915,7 @@ export function createSqliteWorkspaceStore(
         const job: DailyFollowUpJob = {
           ...current,
           runState: "running",
+          leaseUntil: new Date(Date.parse(input.now) + 30 * 60_000).toISOString(),
           lastError: undefined,
           updatedAt: input.now,
         };
@@ -936,6 +941,7 @@ export function createSqliteWorkspaceStore(
       const job: DailyFollowUpJob = {
         ...current,
         runState: "idle",
+        leaseUntil: undefined,
         nextRunAt: input.nextRunAt,
         lastRunAt: input.completedAt,
         lastRadarOperationId: input.radarOperationId,
@@ -963,6 +969,7 @@ export function createSqliteWorkspaceStore(
       const job: DailyFollowUpJob = {
         ...current,
         runState: "failed",
+        leaseUntil: undefined,
         nextRunAt: input.nextRunAt,
         lastError: input.error,
         updatedAt: input.failedAt,

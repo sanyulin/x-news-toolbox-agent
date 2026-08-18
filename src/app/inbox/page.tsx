@@ -17,12 +17,18 @@ export default async function InboxPage() {
     return draft ? [{ proposal, draft }] : [];
   });
   const waiting = cards.filter(({ proposal }) => proposal.status === "awaiting_review").length;
+  const scheduler = dashboard.systemStatus.scheduler;
 
   return <section className="page-stack">
     <header className="page-heading"><div><small>MIND CONTENT INBOX</small><h2>今日内容</h2></div><span className={waiting ? "state state-working" : "state state-ready"}>{waiting ? `${waiting} 条待审核` : "已处理"}</span></header>
-    {dashboard.systemStatus.scheduler.state === "enabled" && dashboard.systemStatus.scheduler.lastPlan ? <section className="surface mind-plan-summary"><strong>Mind 最近计划</strong><p>{dashboard.systemStatus.scheduler.lastPlan.reason}</p><small>{dashboard.systemStatus.scheduler.lastPlan.action === "scan" ? `关注：${dashboard.systemStatus.scheduler.lastPlan.focus}` : "Mind 判断本轮无需扫描"}</small></section> : null}
+    {scheduler.state === "enabled" && scheduler.lastOutcome === "skipped" ? <section className="surface run-notice" role="status"><strong>本轮自动运行已完成</strong><p>Mind 已完成判断，当前没有足够合适的内容，因此本轮跳过，没有生成新文案。</p><small>最近运行：{formatTime(scheduler.lastRunAt)} · 下一次：{formatTime(scheduler.nextRunAt)}</small></section> : null}
+    {scheduler.state === "enabled" && scheduler.lastPlan ? <section className="surface mind-plan-summary"><strong>Mind 最近计划</strong><p>{scheduler.lastPlan.reason}</p><small>{scheduler.lastPlan.action === "scan" ? `关注：${scheduler.lastPlan.focus}` : "Mind 判断本轮无需扫描"}</small></section> : null}
     {cards.length ? <div className="inbox-list">{cards.map(({ proposal, draft }) => <InboxCard draft={draft} key={draft.operationId} proposal={proposal} />)}</div> : <div className="surface empty-state">尚无候选内容。完成设置并启用自动运行后，Mind 会把值得审核的内容送到这里。</div>}
   </section>;
+}
+
+function formatTime(value?: string) {
+  return value ? new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "尚无";
 }
 
 function InboxCard({ proposal, draft }: { proposal: ContentProposal; draft: PlatformDraft }) {

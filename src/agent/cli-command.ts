@@ -5,10 +5,18 @@ export interface AgentCliResult {
   body: Record<string, unknown>;
 }
 
+export interface AgentRuntimeChecks {
+  horizonConfigured: boolean;
+  horizonRuntimeReady: boolean;
+  enabledSourceCount: number;
+  readySourceCount: number;
+}
+
 export async function executeAgentCommand(
   args: string[],
   desk: Pick<CreatorDesk, "submit" | "inspect">,
   now = new Date(),
+  runtimeChecks?: AgentRuntimeChecks,
 ): Promise<AgentCliResult> {
   const command = args[0] ?? "help";
 
@@ -73,13 +81,23 @@ export async function executeAgentCommand(
             }
           : scheduler,
     };
-    const ready =
-      status.database.state === "ready" &&
-      status.mind.state === "connected" &&
-      status.scheduler.state === "enabled";
+    const blockers = [
+      ...(status.database.state === "ready" ? [] : ["数据库未就绪"]),
+      ...(status.mind.state === "connected" ? [] : ["核心 Mind 未连接"]),
+      ...(dashboard.creatorProfile ? [] : ["创作者档案未配置"]),
+      ...(status.scheduler.state === "enabled" ? [] : ["每日自动任务未启用"]),
+      ...(status.scheduler.state === "enabled" && status.scheduler.runState === "failed"
+        ? [`最近自动任务失败：${status.scheduler.lastError ?? "未知错误"}`]
+        : []),
+      ...(runtimeChecks && !runtimeChecks.horizonConfigured ? ["Horizon AI 未配置"] : []),
+      ...(runtimeChecks && !runtimeChecks.horizonRuntimeReady ? ["Horizon Worker 未安装或版本不匹配"] : []),
+      ...(runtimeChecks && runtimeChecks.enabledSourceCount === 0 ? ["没有启用的信息来源"] : []),
+      ...(runtimeChecks && runtimeChecks.readySourceCount === 0 ? ["没有通过连接测试的信息来源"] : []),
+    ];
+    const ready = blockers.length === 0;
     return {
       exitCode: command === "validate" && !ready ? 2 : 0,
-      body: { ok: command === "status" || ready, command, ready, status },
+      body: { ok: command === "status" || ready, command, ready, blockers, runtimeChecks, status },
     };
   }
 
@@ -103,4 +121,10 @@ export function classifyAgentError(error: unknown) {
     return { exitCode: 2, message };
   }
   return { exitCode: 10, message };
+}
+
+export function notificationForAgentResult(result: AgentCliResult) {
+  if (result.body.command !== "run-due" || result.body.outcome === "idle") return undefined;
+  if (result.body.outcome === "skipped") return String(result.body.message ?? "Mind 已完成筛选，本轮没有生成文案。");
+  return "自动任务已完成，请打开审核箱查看结果。";
 }

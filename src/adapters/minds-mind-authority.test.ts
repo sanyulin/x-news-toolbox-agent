@@ -182,7 +182,7 @@ describe("Minds 能力 Adapter", () => {
     ).resolves.toMatchObject({
       decisionId: "message-001",
       mindId: "mind-b",
-      conversationAlias: "creator-main",
+      conversationAlias: "creator-main-v1-20260805",
       usedMemoryIds: ["memory-x-1"],
       memoryInfluence: "根据已确认偏好提高证据型选题的优先级。",
       memoryConflicts: ["新信号与旧的短期假设存在冲突。"],
@@ -190,7 +190,7 @@ describe("Minds 能力 Adapter", () => {
     });
     expect(client.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        alias: "creator-main",
+        alias: "creator-main-v1-20260805",
         messageText: expect.stringContaining("解释 AI 商业化"),
       }),
     );
@@ -329,7 +329,7 @@ describe("Minds 能力 Adapter", () => {
     ).resolves.toMatchObject({
       decisionId: "message-proposal-001",
       mindId: "mind-b",
-      conversationAlias: "creator-main",
+      conversationAlias: "creator-main-v1-20260805",
       goNoGo: "go",
       evidenceVersion: "evidence-001-v1",
       chineseDraft: expect.stringContaining("可验证结果"),
@@ -412,7 +412,7 @@ describe("Minds 能力 Adapter", () => {
     ).resolves.toMatchObject({
       decisionId: "message-learning-001",
       mindId: "mind-b",
-      conversationAlias: "creator-main",
+      conversationAlias: "creator-main-v1-20260805",
       confidence: "medium",
       suggestedMemory: "继续测试具体问题式开场。",
     });

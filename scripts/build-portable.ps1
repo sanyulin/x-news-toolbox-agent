@@ -6,7 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $NodeExe) {
-  $NodeExe = (Get-Command node -ErrorAction Stop).Source
+  $bundledNode = Join-Path $projectRoot ".runtime\node\node.exe"
+  $NodeExe = if (Test-Path -LiteralPath $bundledNode) { $bundledNode } else { (Get-Command node -ErrorAction Stop).Source }
 }
 $NodeExe = (Resolve-Path -LiteralPath $NodeExe).Path
 $launcherTemplate = Join-Path $projectRoot "portable\start.cmd"

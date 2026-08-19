@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 if not defined PORT set PORT=3000
-set HOSTNAME=0.0.0.0
+set HOSTNAME=127.0.0.1
 set CREATOR_MIND_PORTABLE=1
 set CREATOR_MIND_DATABASE_PATH=%~dp0data\x-news-toolbox.sqlite
 set CREATOR_MIND_RUNTIME_CONFIG_PATH=%~dp0data\runtime-config.json

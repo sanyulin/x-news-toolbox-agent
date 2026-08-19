@@ -6,7 +6,8 @@ Built for **Creative Minds Jam #1 — Audience Growth & Engagement**.
 
 ## Mind-first 调用流程
 
-> 定时器只负责唤醒；Mind 负责决定是否扫描、扫描什么、选择哪些内容以及如何写作。
+> 定时器只负责唤醒；Agent 按用户锁定来源采集最多 10 条候选，Mind 负责筛选、排序、决定是否成稿以及如何写作。
+> 输出平台不与赛道绑定。创作者可为每次任务选择 X 或小红书，Mind 只生成当次所选平台的一个版本。
 
 ```mermaid
 sequenceDiagram
@@ -19,15 +20,15 @@ sequenceDiagram
 
     S->>A: 唤醒到期任务
     A->>D: 领取任务，防止重复运行
-    A->>M: 发送创作者资料、已批准记忆和锁定配置
-    M-->>A: 返回 scan / skip 计划
-    alt skip
-        A->>D: 保存跳过理由和 checkpoint
-    else scan
-        A->>H: 按 Mind focus 采集真实信息
-        H-->>A: 返回候选、来源、时间与证据
-        A->>M: 请求排序和单平台草稿
-        M-->>A: 返回选题、草稿、usedMemoryIds 和影响说明
+    A->>H: 按用户锁定来源采集最多 10 条真实候选
+    H-->>A: 返回候选、来源、时间与证据
+    A->>M: 发送当前档案、已批准记忆和候选
+    M-->>A: 排序并优先保留最多 3 条
+    alt 没有 write 候选
+        A->>D: 保存 SKIP 理由、候选数和 checkpoint
+    else 有 write 候选
+        A->>M: 请求证据约束的单平台草稿
+        M-->>A: 返回草稿、usedMemoryIds 和影响说明
         A->>D: 校验并保存待审核内容
         A-->>C: 展示草稿、来源和记忆影响
         C->>A: 批准、修改或拒绝
@@ -75,7 +76,7 @@ The previous radar, source, style, draft, result, and judging-proof routes remai
 
 ## What the Mind does
 
-The Mind is the decision orchestrator, not a rewriting step. When the scheduler wakes it, the Mind can scan or skip, sets the focus inside user-locked boundaries, chooses the number of drafts up to the configured cap, ranks candidates, produces evidence-bound platform drafts, and proposes learning hypotheses from real outcomes. It explicitly reports which user-approved memory IDs influenced every later decision.
+The Mind is the decision orchestrator, not a rewriting step. After the scheduler wakes the Agent and locked sources provide up to ten candidates, the Mind ranks them, keeps at most three priority items, decides whether any item deserves a draft, produces evidence-bound platform copy, and proposes learning hypotheses from real outcomes. It explicitly reports which user-approved memory IDs influenced every later decision.
 
 The scheduler controls only time. Horizon and local tools execute collection, persistence, validation, and review gates; they do not make semantic content decisions.
 
@@ -142,7 +143,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install-agent-schedule.ps1
 powershell -ExecutionPolicy Bypass -File scripts/verify-agent-schedule.ps1
 ```
 
-The operating system only wakes the CLI. SQLite claims the due task and prevents duplicates; the Mind still decides whether to scan or skip. The in-process Next.js poller is disabled unless `CREATOR_MIND_ENABLE_IN_PROCESS_SCHEDULER=1` is explicitly set.
+The operating system only wakes the CLI. SQLite claims the due task and prevents duplicates; the Mind decides which collected candidates deserve writing or whether the completed run should be recorded as SKIP. The CLI sends a short Windows notification for completed, skipped, or failed runs. The in-process Next.js poller is disabled unless `CREATOR_MIND_ENABLE_IN_PROCESS_SCHEDULER=1` is explicitly set.
 
 ## Build the Windows portable edition
 

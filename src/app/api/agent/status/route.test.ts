@@ -9,6 +9,7 @@ vi.mock("@/server/agent-tool-auth", () => ({ authorizeAgentTool: () => true }));
 vi.mock("@/server/create-app-desk", () => ({
   createAppDesk: () => ({ inspect: inspectMock }),
 }));
+vi.mock("@/server/horizon-worker", () => ({ horizonRuntimeReady: () => true }));
 vi.mock("@/server/runtime-config", () => ({
   getPublicRuntimeConfig: () => ({
     apiKeyConfigured: true,
@@ -17,7 +18,10 @@ vi.mock("@/server/runtime-config", () => ({
   }),
 }));
 vi.mock("@/server/workspace-data", () => ({
-  createWorkspaceDataStore: () => ({ getLatestRadarJob: getLatestRadarJobMock }),
+  createWorkspaceDataStore: () => ({
+    getLatestRadarJob: getLatestRadarJobMock,
+    listSources: () => [{ id: "source-1", enabled: true, lastStatus: "ready" }],
+  }),
 }));
 
 import { GET } from "./route";
@@ -59,6 +63,8 @@ describe("GET /api/agent/status", () => {
       contractVersion: "1.0.0",
       gateResults: [{ gate: "platform", status: "passed" }],
     });
+    expect(body.readyForAutonomy).toBe(true);
+    expect(body.blockers).toEqual([]);
     expect(JSON.stringify(body)).not.toMatch(/apiKey|secret/i);
   });
 });

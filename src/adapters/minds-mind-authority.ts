@@ -199,6 +199,11 @@ function creatorProfileContext(profile: CreatorProfile) {
   ].join("\n");
 }
 
+function decisionConversationAlias(base: string, asOf: string, profile: CreatorProfile) {
+  const day = asOf.slice(0, 10).replaceAll("-", "");
+  return `${base}-v${profile.version}-${day}`;
+}
+
 async function latestHistoryFingerprint(client: ProbeClient, alias: string) {
   if (!client.getHistory) return client.getLatestHistoryFingerprint(alias);
   const rows = await client.getHistory(alias, { limit: 200 });
@@ -291,7 +296,8 @@ export function createMindsMindAuthority(
         `用户锁定配置：${JSON.stringify(input.locked)}`,
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories)}`,
       ].join("\n");
-      const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
+      const runAlias = decisionConversationAlias(alias, input.asOf, input.profile);
+      const outcome = await sendAndWaitForMindReply({ client, alias: runAlias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) throw new Error("Mind 已被唤醒，但在 6 分钟内没有返回自动运行计划");
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的自动运行计划");
@@ -300,7 +306,7 @@ export function createMindsMindAuthority(
         decisionId: outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(),
         mindId: mind.mindId,
         mindName,
-        conversationAlias: alias,
+        conversationAlias: runAlias,
         ...plan,
       };
     },
@@ -381,7 +387,8 @@ export function createMindsMindAuthority(
         )}`,
       ].join("\n");
 
-      const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
+      const runAlias = decisionConversationAlias(alias, input.asOf, input.profile);
+      const outcome = await sendAndWaitForMindReply({ client, alias: runAlias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
         throw new Error("Mind 已收到雷达任务，但在 6 分钟内没有返回决策");
       }
@@ -404,7 +411,7 @@ export function createMindsMindAuthority(
           outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(),
         mindId: mind.mindId,
         mindName,
-        conversationAlias: alias,
+        conversationAlias: runAlias,
         rationale: decision.rationale,
         usedMemoryIds: decision.usedMemoryIds,
         memoryInfluence: decision.memoryInfluence,
@@ -451,7 +458,8 @@ export function createMindsMindAuthority(
           : "雷达决策：本轮没有真实 Mind 排序记录。",
       ].join("\n");
 
-      const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
+      const runAlias = decisionConversationAlias(alias, input.asOf, input.profile);
+      const outcome = await sendAndWaitForMindReply({ client, alias: runAlias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
         throw new Error("Mind 已收到内容建议任务，但在 6 分钟内没有返回决策");
       }
@@ -468,7 +476,7 @@ export function createMindsMindAuthority(
           outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(),
         mindId: mind.mindId,
         mindName,
-        conversationAlias: alias,
+        conversationAlias: runAlias,
         ...decision,
       };
     },
@@ -494,7 +502,8 @@ export function createMindsMindAuthority(
         `信号：${JSON.stringify(input.signal)}`,
         `证据包：${JSON.stringify(input.evidence)}`,
       ].join("\n");
-      const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
+      const runAlias = decisionConversationAlias(alias, input.asOf, input.profile);
+      const outcome = await sendAndWaitForMindReply({ client, alias: runAlias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) throw new Error("Mind 已收到平台写作任务，但在 6 分钟内没有返回决策");
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的平台文案");
@@ -502,7 +511,7 @@ export function createMindsMindAuthority(
       if (decision.evidenceVersion !== input.evidence.version) throw new Error("Mind 返回的证据版本与本轮不一致");
       const allowedEvidence = new Set(input.evidence.sources.map((source) => source.id));
       if (decision.evidenceRefs.some((id) => !allowedEvidence.has(id))) throw new Error("Mind 返回了未知证据引用");
-      return { decisionId: outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(), mindId: mind.mindId, mindName, conversationAlias: alias, ...decision };
+      return { decisionId: outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(), mindId: mind.mindId, mindName, conversationAlias: runAlias, ...decision };
     },
 
     async commitMemory(memory) {
@@ -540,7 +549,8 @@ export function createMindsMindAuthority(
         `指标快照：${JSON.stringify(input.publication.metrics)}`,
       ].join("\n");
 
-      const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
+      const runAlias = decisionConversationAlias(alias, input.asOf, input.profile);
+      const outcome = await sendAndWaitForMindReply({ client, alias: runAlias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
         throw new Error("Mind 已收到学习任务，但在 6 分钟内没有返回建议");
       }
@@ -552,7 +562,7 @@ export function createMindsMindAuthority(
           outcome.reply.messageId ?? outcome.reply.fingerprint ?? crypto.randomUUID(),
         mindId: mind.mindId,
         mindName,
-        conversationAlias: alias,
+        conversationAlias: runAlias,
         ...decision,
       };
     },

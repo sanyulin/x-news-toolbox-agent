@@ -59,12 +59,26 @@ export function DailyFollowUpPanel({
             : `每天采集 ${DAILY_CANDIDATE_LIMIT} 条候选，由 Mind 优先保留 ${DAILY_PRIORITY_LIMIT} 条；没有合适内容时会说明 SKIP 原因。`}
         </p>
       </div>
+      <div className="scheduler-actions">
+        <label><span>输出平台</span><select aria-label="自主跟进目标平台" disabled={pending} onChange={(event) => setPlatform(event.target.value as PlatformId)} value={platform}><option value="x">X</option><option value="xiaohongshu">小红书</option></select></label>
+        <label><span>每天运行</span><input disabled={pending} onChange={(event) => setDailyTime(event.target.value)} type="time" value={dailyTime} /></label>
+        <label><span>最多输出</span><input disabled={pending} max={5} min={1} onChange={(event) => setOutputCount(Number(event.target.value))} type="number" value={outputCount} /></label>
+        <label className="scheduler-focus"><span>关注方向（可选）</span><input disabled={pending} maxLength={240} onChange={(event) => setFocus(event.target.value)} placeholder="例如：AI 产品与创作者经济" value={focus} /></label>
+      </div>
       {scheduler.state === "enabled" ? (
         <>
           <small>下次：{formatTime(scheduler.nextRunAt)}</small>
           <small>最近：{formatTime(scheduler.lastRunAt)}</small>
           {scheduler.lastPlan ? <small>Mind 计划：{scheduler.lastPlan.action === "scan" ? "执行扫描" : "跳过本轮"} · {scheduler.lastPlan.reason}</small> : null}
           {scheduler.lastError ? <p className="scheduler-error">{scheduler.lastError}</p> : null}
+          <button
+            className="button button-primary"
+            disabled={pending || (scheduler.mode === "real" && !mindConnected)}
+            onClick={() => configure(true, scheduler.mode)}
+            type="button"
+          >
+            {pending ? "保存中…" : "保存任务设置"}
+          </button>
           <button
             className="button button-secondary"
             disabled={pending}
@@ -76,10 +90,6 @@ export function DailyFollowUpPanel({
         </>
       ) : (
         <div className="scheduler-actions">
-          <label><span>输出平台</span><select aria-label="自主跟进目标平台" disabled={pending} onChange={(event) => setPlatform(event.target.value as PlatformId)} value={platform}><option value="x">X</option><option value="xiaohongshu">小红书</option></select></label>
-          <label><span>每天运行</span><input disabled={pending} onChange={(event) => setDailyTime(event.target.value)} type="time" value={dailyTime} /></label>
-          <label><span>最多输出</span><input disabled={pending} max={5} min={1} onChange={(event) => setOutputCount(Number(event.target.value))} type="number" value={outputCount} /></label>
-          <label className="scheduler-focus"><span>关注方向（可选）</span><input disabled={pending} maxLength={240} onChange={(event) => setFocus(event.target.value)} placeholder="例如：AI 产品与创作者经济" value={focus} /></label>
           <button
             className="button button-primary"
             disabled={pending || !mindConnected}

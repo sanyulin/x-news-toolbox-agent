@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CreatorDesk } from "@/core/creator-desk";
 
-import { classifyAgentError, executeAgentCommand } from "./cli-command";
+import { classifyAgentError, executeAgentCommand, notificationForAgentResult } from "./cli-command";
 
 function fakeDesk(
   overrides: Partial<Pick<CreatorDesk, "submit" | "inspect">> = {},
@@ -15,6 +15,14 @@ function fakeDesk(
       status: "completed" as const,
     })),
     inspect: vi.fn(async () => ({
+      creatorProfile: {
+        positioning: "AI 行业内容",
+        audience: "科技创作者",
+        voice: "专业、简洁",
+        boundaries: "不伪造事实，不自动发布",
+        version: 1,
+        updatedAt: "2026-08-18T01:00:00.000Z",
+      },
       systemStatus: {
         database: { state: "ready" as const, label: "数据库已就绪" as const },
         mind: {
@@ -144,6 +152,35 @@ describe("独立 Agent CLI", () => {
     expect(result).toMatchObject({ exitCode: 2, body: { ok: false, ready: false } });
   });
 
+  it("最近运行失败或真实依赖未就绪时不得报告 ready", async () => {
+    const dashboard = await fakeDesk().inspect({ view: "dashboard" });
+    const desk = fakeDesk({
+      inspect: vi.fn(async () => ({
+        ...dashboard,
+        systemStatus: {
+          ...dashboard.systemStatus,
+          scheduler: {
+            ...dashboard.systemStatus.scheduler,
+            runState: "failed" as const,
+            lastError: "Mind 超时",
+          },
+        },
+      })),
+    });
+
+    const result = await executeAgentCommand(["validate"], desk, new Date(), {
+      horizonConfigured: true,
+      horizonRuntimeReady: true,
+      enabledSourceCount: 1,
+      readySourceCount: 1,
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 2,
+      body: { ready: false, blockers: ["最近自动任务失败：Mind 超时"] },
+    });
+  });
+
   it("状态输出不包含 Mind 计划正文", async () => {
     const desk = fakeDesk();
     const result = await executeAgentCommand(["status"], desk);
@@ -156,5 +193,11 @@ describe("独立 Agent CLI", () => {
     expect(classifyAgentError(new Error("API Key 尚未配置")).exitCode).toBe(2);
     expect(classifyAgentError(new Error("Mind 请求超时")).exitCode).toBe(10);
     expect(classifyAgentError(new Error("未知记忆 ID")).exitCode).toBe(20);
+  });
+
+  it("只为实际完成或 SKIP 的到期任务生成通知", () => {
+    expect(notificationForAgentResult({ exitCode: 0, body: { command: "run-due", outcome: "idle" } })).toBeUndefined();
+    expect(notificationForAgentResult({ exitCode: 0, body: { command: "run-due", outcome: "completed" } })).toContain("审核箱");
+    expect(notificationForAgentResult({ exitCode: 0, body: { command: "run-due", outcome: "skipped", message: "本轮 SKIP" } })).toBe("本轮 SKIP");
   });
 });

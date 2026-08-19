@@ -79,6 +79,50 @@ describe("独立 Agent CLI", () => {
     expect(result).toMatchObject({ exitCode: 0, body: { ok: true, outcome: "idle" } });
   });
 
+  it("Mind 跳过时在 CLI 输出原因和已筛选数量", async () => {
+    const base = await fakeDesk().inspect({ view: "dashboard" });
+    const desk = fakeDesk({
+      inspect: vi.fn(async () => ({
+        ...base,
+        systemStatus: {
+          ...base.systemStatus,
+          scheduler: {
+            state: "enabled" as const,
+            label: "真实每日跟进已启用",
+            mode: "real" as const,
+            platform: "xiaohongshu" as const,
+            runState: "idle" as const,
+            lastOutcome: "skipped" as const,
+            lastCandidateCount: 10,
+            lastPriorityCount: 3,
+            nextRunAt: "2026-08-19T02:00:00.000Z",
+            lastPlan: {
+              decisionId: "skip-1",
+              mindId: "mind-1",
+              mindName: "Creator Mind",
+              conversationAlias: "creator-main",
+              action: "skip" as const,
+              focus: "AI 行业热点",
+              reason: "五条候选均不适合今天发布。",
+              requestedDraftCount: 0,
+              usedMemoryIds: [],
+              memoryInfluence: "未使用长期记忆。",
+              memoryConflicts: [],
+            },
+          },
+        },
+      })),
+    });
+
+    const result = await executeAgentCommand(["run-due"], desk);
+    expect(result.body).toMatchObject({
+      outcome: "skipped",
+      candidateCount: 10,
+      priorityCount: 3,
+      message: "Mind 已筛选 10 条候选，保留 3 条优先项，本轮跳过：五条候选均不适合今天发布。",
+    });
+  });
+
   it("配置未完成时 validate 返回配置错误", async () => {
     const readyDesk = fakeDesk();
     const readyDashboard = await readyDesk.inspect({ view: "dashboard" });

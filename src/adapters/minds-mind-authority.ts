@@ -70,6 +70,7 @@ export interface MindsMindAuthority {
 }
 
 const CONFIG_GUIDANCE = "设置 MINDS_BUILDER_API_KEY 后连接核心 Mind";
+const MIND_REPLY_TIMEOUT_MS = 360_000;
 const radarReplySchema = z.object({
   rationale: z.string().trim().min(4).max(1_500),
   usedMemoryIds: z.array(z.string()).max(5).default([]),
@@ -240,7 +241,7 @@ async function sendAndWaitForMindReply({
     await client.ensureConversation(alias, mindId);
     const before = await latestHistoryFingerprint(client, alias);
     await client.sendMessage({ alias, messageText });
-    return client.waitForReply({ alias, timeoutMs: 180_000, afterFingerprint: before, sentMessageText: messageText });
+    return client.waitForReply({ alias, timeoutMs: MIND_REPLY_TIMEOUT_MS, afterFingerprint: before, sentMessageText: messageText });
   });
 }
 
@@ -291,7 +292,7 @@ export function createMindsMindAuthority(
         `已批准长期记忆（只能引用这些 memoryId）：${JSON.stringify(input.memories)}`,
       ].join("\n");
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
-      if (outcome.timedOut) throw new Error("Mind 已被唤醒，但在 180 秒内没有返回自动运行计划");
+      if (outcome.timedOut) throw new Error("Mind 已被唤醒，但在 6 分钟内没有返回自动运行计划");
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的自动运行计划");
       const plan = parseJsonReply(replyText, "自动运行计划", autonomousPlanReplySchema);
@@ -342,7 +343,7 @@ export function createMindsMindAuthority(
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
 
       if (outcome.timedOut) {
-        throw new Error("Mind 已连接，但在 180 秒内没有返回验证消息");
+        throw new Error("Mind 已连接，但在 6 分钟内没有返回验证消息");
       }
 
       return {
@@ -382,7 +383,7 @@ export function createMindsMindAuthority(
 
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
-        throw new Error("Mind 已收到雷达任务，但在 180 秒内没有返回决策");
+        throw new Error("Mind 已收到雷达任务，但在 6 分钟内没有返回决策");
       }
 
       const replyText = outcome.reply.messageText?.trim();
@@ -452,7 +453,7 @@ export function createMindsMindAuthority(
 
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
-        throw new Error("Mind 已收到内容建议任务，但在 180 秒内没有返回决策");
+        throw new Error("Mind 已收到内容建议任务，但在 6 分钟内没有返回决策");
       }
 
       const replyText = outcome.reply.messageText?.trim();
@@ -494,7 +495,7 @@ export function createMindsMindAuthority(
         `证据包：${JSON.stringify(input.evidence)}`,
       ].join("\n");
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
-      if (outcome.timedOut) throw new Error("Mind 已收到平台写作任务，但在 180 秒内没有返回决策");
+      if (outcome.timedOut) throw new Error("Mind 已收到平台写作任务，但在 6 分钟内没有返回决策");
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的平台文案");
       const decision = parsePlatformReply(replyText);
@@ -541,7 +542,7 @@ export function createMindsMindAuthority(
 
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
       if (outcome.timedOut) {
-        throw new Error("Mind 已收到学习任务，但在 180 秒内没有返回建议");
+        throw new Error("Mind 已收到学习任务，但在 6 分钟内没有返回建议");
       }
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的学习更新");
@@ -574,7 +575,7 @@ export function createMindsMindAuthority(
       ].join("\n");
 
       const outcome = await sendAndWaitForMindReply({ client, alias, mindId: mind.mindId, messageText });
-      if (outcome.timedOut) throw new Error("Mind 已收到风格扫描任务，但在 180 秒内没有返回档案");
+      if (outcome.timedOut) throw new Error("Mind 已收到风格扫描任务，但在 6 分钟内没有返回档案");
       const replyText = outcome.reply.messageText?.trim();
       if (!replyText) throw new Error("Mind 返回了空的风格档案");
       return parseJsonReply(replyText, "风格档案", styleReplySchema);

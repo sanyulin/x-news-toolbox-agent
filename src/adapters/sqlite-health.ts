@@ -950,6 +950,8 @@ export function createSqliteWorkspaceStore(
         lastProposalOperationIds: input.proposalOperationIds,
         lastPlatformDraftOperationIds: input.platformDraftOperationIds,
         lastPlan: input.plan,
+        lastCandidateCount: input.candidateCount,
+        lastPriorityCount: input.priorityCount,
         lastOutcome: input.outcome,
         lastError: undefined,
         updatedAt: input.completedAt,

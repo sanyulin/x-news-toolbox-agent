@@ -21,7 +21,7 @@ export default async function InboxPage() {
 
   return <section className="page-stack">
     <header className="page-heading"><div><small>MIND CONTENT INBOX</small><h2>今日内容</h2></div><span className={waiting ? "state state-working" : "state state-ready"}>{waiting ? `${waiting} 条待审核` : "已处理"}</span></header>
-    {scheduler.state === "enabled" && scheduler.lastOutcome === "skipped" ? <section className="surface run-notice" role="status"><strong>本轮自动运行已完成</strong><p>Mind 已完成判断，当前没有足够合适的内容，因此本轮跳过，没有生成新文案。</p><small>最近运行：{formatTime(scheduler.lastRunAt)} · 下一次：{formatTime(scheduler.nextRunAt)}</small></section> : null}
+    {scheduler.state === "enabled" && scheduler.lastOutcome === "skipped" ? <section className="surface run-notice" role="status"><strong>本轮自动运行已完成 · SKIP</strong><p>Mind 已筛选 {scheduler.lastCandidateCount ?? 0} 条候选，保留 {scheduler.lastPriorityCount ?? 0} 条优先项，本轮没有生成新文案。</p>{scheduler.lastPlan?.reason ? <p>{scheduler.lastPlan.reason}</p> : null}<small>最近运行：{formatTime(scheduler.lastRunAt)} · 下一次：{formatTime(scheduler.nextRunAt)}</small></section> : null}
     {scheduler.state === "enabled" && scheduler.lastPlan ? <section className="surface mind-plan-summary"><strong>Mind 最近计划</strong><p>{scheduler.lastPlan.reason}</p><small>{scheduler.lastPlan.action === "scan" ? `关注：${scheduler.lastPlan.focus}` : "Mind 判断本轮无需扫描"}</small></section> : null}
     {cards.length ? <div className="inbox-list">{cards.map(({ proposal, draft }) => <InboxCard draft={draft} key={draft.operationId} proposal={proposal} />)}</div> : <div className="surface empty-state">尚无候选内容。完成设置并启用自动运行后，Mind 会把值得审核的内容送到这里。</div>}
   </section>;

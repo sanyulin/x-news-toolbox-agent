@@ -195,10 +195,15 @@ export interface DailyFollowUpJob {
   lastProposalOperationIds?: string[];
   lastPlatformDraftOperationIds?: string[];
   lastPlan?: AutonomousRunPlan;
+  lastCandidateCount?: number;
+  lastPriorityCount?: number;
   lastOutcome?: "drafted" | "skipped";
   lastError?: string;
   updatedAt: string;
 }
+
+export const DAILY_CANDIDATE_LIMIT = 10;
+export const DAILY_PRIORITY_LIMIT = 3;
 
 export interface SchedulerStore {
   getDailyFollowUp(): Promise<DailyFollowUpJob | undefined>;
@@ -228,6 +233,8 @@ export interface SchedulerStore {
     platformDraftOperationId?: string;
     proposalOperationIds?: string[];
     platformDraftOperationIds?: string[];
+    candidateCount?: number;
+    priorityCount?: number;
     plan: AutonomousRunPlan;
     outcome: "drafted" | "skipped";
   }): Promise<void>;
@@ -599,6 +606,7 @@ export interface CreatorDesk {
           dataMode: "demo_only" | "live_with_demo_fallback";
           decisionMode?: "rules" | "mind" | "demo_mind";
           focus?: string;
+          candidateLimit?: number;
         }
       | {
           type: "update_profile";
@@ -762,49 +770,7 @@ export function createCreatorDesk(
 
         const nextRunAt = nextDailyRun(now, claimed.job.dailyTime);
         try {
-          const [profile, memories] = await Promise.all([
-            dependencies.profileStore?.getCreatorProfile(),
-            dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? [],
-          ]);
-          const planningMind = claimed.job.mode === "real" ? dependencies.mind : dependencies.demoMind;
-          if (!planningMind?.planAutonomousRun) {
-            throw new Error(claimed.job.mode === "real" ? "核心 Mind 尚未配置自动编排能力" : "演示 Mind 尚未配置自动编排能力");
-          }
           const maximumDrafts = Math.max(1, Math.min(5, claimed.job.outputCount ?? 1));
-          const plan = await planningMind.planAutonomousRun({
-            asOf: now.toISOString(),
-            profile: profile ?? defaultCreatorProfile(claimed.job.focus),
-            memories,
-            locked: {
-              platform: claimed.job.platform,
-              maximumDrafts,
-              focus: claimed.job.focus,
-            },
-          });
-          validateMemoryUsage(plan.usedMemoryIds, memories);
-          if (
-            plan.requestedDraftCount > maximumDrafts ||
-            (plan.action === "scan" && plan.requestedDraftCount < 1)
-          ) {
-            throw new Error("Mind 请求的草稿数量超出用户锁定上限");
-          }
-          if (plan.usedMemoryIds.length) {
-            await dependencies.memoryStore?.markMemoriesApplied({ memoryIds: plan.usedMemoryIds, appliedAt: now.toISOString() });
-          }
-          if (plan.action === "skip") {
-            await dependencies.schedulerStore.completeDailyFollowUp({
-              completedAt: now.toISOString(),
-              nextRunAt,
-              plan,
-              outcome: "skipped",
-            });
-            return {
-              operationId: plan.decisionId,
-              commandId: input.commandId,
-              disposition: "accepted",
-              status: "completed",
-            };
-          }
           const result = await desk.submit({
             commandId: `daily-radar:${claimed.scheduledFor}`,
             command: {
@@ -816,15 +782,51 @@ export function createCreatorDesk(
                   : "demo_only",
               decisionMode:
                 claimed.job.mode === "real" ? "mind" : "demo_mind",
-              focus: plan.focus,
+              focus: claimed.job.focus,
+              candidateLimit: DAILY_CANDIDATE_LIMIT,
             },
           });
           const radar = (await desk.inspect({ view: "dashboard" })).latestRadar;
-          const selected = radar?.signals.filter((candidate) => candidate.recommendation === "write").slice(0, plan.requestedDraftCount) ?? [];
-          if (!radar || !selected.length) throw new Error("Mind 本轮没有选择适合进入审核的候选信号");
+          if (!radar?.mindDecision) throw new Error("Mind 本轮没有返回候选筛选结果");
+          const prioritySignals = radar.signals
+            .filter((candidate) => candidate.recommendation !== "skip")
+            .slice(0, DAILY_PRIORITY_LIMIT);
+          const selectedSignals = prioritySignals
+            .filter((candidate) => candidate.recommendation === "write")
+            .slice(0, maximumDrafts);
+          const plan: AutonomousRunPlan = {
+            decisionId: radar.mindDecision.decisionId,
+            mindId: radar.mindDecision.mindId,
+            mindName: radar.mindDecision.mindName,
+            conversationAlias: radar.mindDecision.conversationAlias,
+            action: selectedSignals.length ? "scan" : "skip",
+            focus: claimed.job.focus ?? radar.focus ?? "每日候选筛选",
+            reason: radar.mindDecision.rationale,
+            requestedDraftCount: selectedSignals.length,
+            usedMemoryIds: radar.mindDecision.usedMemoryIds ?? [],
+            memoryInfluence: radar.mindDecision.memoryInfluence ?? "本轮未使用长期记忆。",
+            memoryConflicts: radar.mindDecision.memoryConflicts ?? [],
+          };
+          if (!selectedSignals.length) {
+            await dependencies.schedulerStore.completeDailyFollowUp({
+              completedAt: now.toISOString(),
+              nextRunAt,
+              radarOperationId: result.operationId,
+              candidateCount: radar.signals.length,
+              priorityCount: prioritySignals.length,
+              plan,
+              outcome: "skipped",
+            });
+            return {
+              operationId: plan.decisionId,
+              commandId: input.commandId,
+              disposition: "accepted",
+              status: "completed",
+            };
+          }
           const proposalOperationIds: string[] = [];
           const platformDraftOperationIds: string[] = [];
-          for (const [index, signal] of selected.entries()) {
+          for (const [index, signal] of selectedSignals.entries()) {
             const proposalResult = await desk.submit({
               commandId: `daily-proposal:${claimed.scheduledFor}:${index}`,
               command: { type: "prepare_proposal", signalId: signal.id, proposalMode: "evidence" },
@@ -849,6 +851,8 @@ export function createCreatorDesk(
             platformDraftOperationId: platformDraftOperationIds.at(-1),
             proposalOperationIds,
             platformDraftOperationIds,
+            candidateCount: radar.signals.length,
+            priorityCount: prioritySignals.length,
             plan,
             outcome: "drafted",
           });
@@ -1391,6 +1395,9 @@ export function createCreatorDesk(
         dataMode: input.command.dataMode,
       });
       const signals = Array.isArray(collected) ? collected : collected.signals;
+      const candidateLimit = input.command.candidateLimit
+        ? Math.max(1, Math.min(20, input.command.candidateLimit))
+        : Number.MAX_SAFE_INTEGER;
       const collectedSignals = [...
         signals.reduce((byUrl, signal) => {
           const current = byUrl.get(signal.canonicalUrl);
@@ -1401,7 +1408,8 @@ export function createCreatorDesk(
         }, new Map<string, RadarSignal>()),
       ]
         .map(([, signal]) => signal)
-        .sort((left, right) => right.relevanceScore - left.relevanceScore);
+        .sort((left, right) => right.relevanceScore - left.relevanceScore)
+        .slice(0, candidateLimit);
 
       let uniqueSignals = collectedSignals;
       let mindDecision: MindRadarDecision | undefined;
@@ -1594,6 +1602,8 @@ export function createCreatorDesk(
                 lastProposalOperationIds: dailyFollowUp.lastProposalOperationIds,
                 lastPlatformDraftOperationIds: dailyFollowUp.lastPlatformDraftOperationIds,
                 lastPlan: dailyFollowUp.lastPlan,
+                lastCandidateCount: dailyFollowUp.lastCandidateCount,
+                lastPriorityCount: dailyFollowUp.lastPriorityCount,
                 lastOutcome: dailyFollowUp.lastOutcome,
                 outputCount: dailyFollowUp.outputCount,
                 focus: dailyFollowUp.focus,

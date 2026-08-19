@@ -17,6 +17,18 @@ export async function executeAgentCommand(
       commandId: `cli-poll-${now.toISOString()}`,
       command: { type: "process_due_follow_up" },
     });
+    const dashboard = await desk.inspect({ view: "dashboard" });
+    const scheduler = dashboard.systemStatus.scheduler;
+    const skipped =
+      receipt.operationId !== "daily-follow-up-idle" &&
+      scheduler.state === "enabled" &&
+      scheduler.lastOutcome === "skipped";
+    const candidateCount =
+      scheduler.state === "enabled" ? scheduler.lastCandidateCount ?? 0 : 0;
+    const priorityCount =
+      scheduler.state === "enabled" ? scheduler.lastPriorityCount ?? 0 : 0;
+    const skipReason =
+      scheduler.state === "enabled" ? scheduler.lastPlan?.reason : undefined;
     return {
       exitCode: 0,
       body: {
@@ -25,7 +37,16 @@ export async function executeAgentCommand(
         outcome:
           receipt.operationId === "daily-follow-up-idle"
             ? "idle"
-            : "completed",
+            : skipped
+              ? "skipped"
+              : "completed",
+        ...(skipped
+          ? {
+              candidateCount,
+              priorityCount,
+              message: `Mind 已筛选 ${candidateCount} 条候选，保留 ${priorityCount} 条优先项，本轮跳过：${skipReason ?? "没有适合生成文案的内容。"}`,
+            }
+          : {}),
         receipt,
       },
     };

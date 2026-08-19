@@ -289,40 +289,90 @@ describe("比赛关键旅程", () => {
     });
   });
 
-  it("Mind 可以决定跳过本轮且不会调用信息来源", async () => {
+  it("每日抽取十条候选交给 Mind 筛选，保留前三条优先项并记录跳过原因", async () => {
     const store = createSqliteWorkspaceStore(":memory:");
     let collected = false;
+    let screened = 0;
     const now = new Date("2026-08-13T09:00:00.000Z");
     const desk = createCreatorDesk({
       database: { check: async () => ({ ready: true }) },
       mind: {
         inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "主脑" } }),
-        planAutonomousRun: async () => ({ decisionId: "skip-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "skip" as const, focus: "AI 创作者", reason: "今天没有需要重复扫描的新目标。", requestedDraftCount: 0, usedMemoryIds: [], memoryInfluence: "本轮没有可用记忆。", memoryConflicts: [] }),
+        rankRadar: async ({ signals }) => {
+          screened = signals.length;
+          return {
+            decisionId: "skip-decision",
+            mindId: "mind",
+            mindName: "主脑",
+            conversationAlias: "creator-main",
+            rationale: "十条候选中前三条只适合继续观察，本轮不发布。",
+            usedMemoryIds: [],
+            memoryInfluence: "本轮没有可用记忆。",
+            memoryConflicts: [],
+            rankedSignals: signals.map((signal) => ({ signalId: signal.id, relevanceScore: 0.5, why: "相关性不足。", recommendation: "watch" as const })),
+          };
+        },
       },
       workspaceStore: store, profileStore: store, proposalStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
-      signalSource: { collect: async () => { collected = true; return []; } },
+      signalSource: { collect: async ({ asOf }) => {
+        collected = true;
+        return Array.from({ length: 12 }, (_, index) => ({
+          id: `candidate-${index}`,
+          title: `候选 ${index}`,
+          summary: "用于每日筛选的真实候选摘要。",
+          sourceName: "测试来源",
+          sourceUrl: `https://example.com/${index}`,
+          canonicalUrl: `https://example.com/${index}`,
+          publishedAt: asOf,
+          relevanceScore: 1 - index / 10,
+          synthetic: false,
+        }));
+      } },
       clock: () => now,
     });
     await desk.submit({ commandId: "skip-config", command: { type: "configure_daily_follow_up", enabled: true, mode: "real", platform: "x", outputCount: 3 } });
     await desk.submit({ commandId: "skip-run", command: { type: "process_due_follow_up" } });
-    expect(collected).toBe(false);
-    expect((await desk.inspect({ view: "dashboard" })).systemStatus.scheduler).toMatchObject({ lastOutcome: "skipped", lastPlan: { decisionId: "skip-decision" } });
+    expect(collected).toBe(true);
+    expect(screened).toBe(10);
+    expect((await desk.inspect({ view: "dashboard" })).systemStatus.scheduler).toMatchObject({
+      lastOutcome: "skipped",
+      lastCandidateCount: 10,
+      lastPriorityCount: 3,
+      lastPlan: { decisionId: "skip-decision", reason: "十条候选中前三条只适合继续观察，本轮不发布。" },
+    });
   });
 
-  it("拒绝 Mind 超过用户上限的输出数量", async () => {
+  it("每日候选可以多于最终输出，但最终草稿不超过用户上限", async () => {
     const store = createSqliteWorkspaceStore(":memory:");
     const now = new Date("2026-08-13T09:00:00.000Z");
+    const ids = ["schedule", "radar", "proposal-1", "draft-1", "proposal-2", "draft-2"];
     const desk = createCreatorDesk({
       database: { check: async () => ({ ready: true }) },
-      mind: {
-        inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "主脑" } }),
-        planAutonomousRun: async () => ({ decisionId: "overflow-decision", mindId: "mind", mindName: "主脑", conversationAlias: "creator-main", action: "scan" as const, focus: "AI", reason: "准备扫描。", requestedDraftCount: 3, usedMemoryIds: [], memoryInfluence: "无记忆", memoryConflicts: [] }),
-      },
+      mind: { inspect: async () => ({ state: "not_configured" as const, guidance: "未配置" }) },
+      demoMind: createRecordedMindAuthority(),
       workspaceStore: store, profileStore: store, proposalStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
-      signalSource: { collect: async () => [] },
+      signalSource: { collect: async ({ asOf }) => Array.from({ length: 3 }, (_, index) => ({
+        id: `candidate-${index}`,
+        title: `候选 ${index}`,
+        summary: "符合创作者定位的演示候选。",
+        sourceName: "演示来源",
+        sourceUrl: `https://example.com/${index}`,
+        canonicalUrl: `https://example.com/${index}`,
+        publishedAt: asOf,
+        relevanceScore: 0.95 - index / 100,
+        synthetic: true,
+      })) },
+      idFactory: () => ids.shift()!,
       clock: () => now,
     });
-    await desk.submit({ commandId: "limit-config", command: { type: "configure_daily_follow_up", enabled: true, mode: "real", platform: "x", outputCount: 2 } });
-    await expect(desk.submit({ commandId: "limit-run", command: { type: "process_due_follow_up" } })).rejects.toThrow("超出用户锁定上限");
+    await desk.submit({ commandId: "limit-config", command: { type: "configure_daily_follow_up", enabled: true, mode: "demo", platform: "x", outputCount: 2 } });
+    await desk.submit({ commandId: "limit-run", command: { type: "process_due_follow_up" } });
+    expect((await desk.inspect({ view: "dashboard" })).systemStatus.scheduler).toMatchObject({
+      lastOutcome: "drafted",
+      lastCandidateCount: 3,
+      lastPriorityCount: 3,
+      lastProposalOperationIds: ["proposal-1", "proposal-2"],
+      lastPlatformDraftOperationIds: ["draft-1", "draft-2"],
+    });
   });
 });

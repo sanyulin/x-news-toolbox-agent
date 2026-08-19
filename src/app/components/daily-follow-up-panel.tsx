@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { DashboardView, PlatformId } from "@/core/creator-desk";
+import { DAILY_CANDIDATE_LIMIT, DAILY_PRIORITY_LIMIT, type DashboardView, type PlatformId } from "@/core/creator-desk";
 
 export function DailyFollowUpPanel({
   scheduler,
@@ -55,8 +55,8 @@ export function DailyFollowUpPanel({
         <strong>自主跟进</strong>
         <p>
           {scheduler.state === "enabled"
-            ? `${scheduler.mode === "real" ? "真实" : "演示"}模式 · ${scheduler.platform === "x" ? "X" : "小红书"} · 最多 ${scheduler.outputCount ?? 1} 条 · ${scheduler.runState === "running" ? "Mind 正在工作" : "等待下一轮"}`
-            : "定时器只负责唤醒 Mind；Mind 决定是否扫描、关注什么和准备哪些待审核内容。"}
+            ? `${scheduler.mode === "real" ? "真实" : "演示"}模式 · 每天筛选 ${DAILY_CANDIDATE_LIMIT} 条、优先保留 ${DAILY_PRIORITY_LIMIT} 条 · 最多输出 ${scheduler.outputCount ?? 1} 条 · ${scheduler.runState === "running" ? "Mind 正在工作" : "等待下一轮"}`
+            : `每天采集 ${DAILY_CANDIDATE_LIMIT} 条候选，由 Mind 优先保留 ${DAILY_PRIORITY_LIMIT} 条；没有合适内容时会说明 SKIP 原因。`}
         </p>
       </div>
       {scheduler.state === "enabled" ? (

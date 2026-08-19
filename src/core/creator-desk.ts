@@ -891,12 +891,19 @@ export function createCreatorDesk(
           };
         }
 
-        const [radar, storedProfile, memories] = await Promise.all([
+        const proposalMode = input.command.proposalMode;
+        const [radar, storedProfile, recalledMemories] = await Promise.all([
           dependencies.workspaceStore.getLatestRadarRun(),
           dependencies.profileStore.getCreatorProfile(),
           dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? [],
         ]);
         if (!radar) throw new Error("请先运行今日雷达");
+        const memories = recalledMemories.filter((memory) =>
+          memory.synthetic === (
+            proposalMode === "demo" ||
+            (proposalMode === "evidence" && radar.decisionMode === "demo_mind")
+          ),
+        );
         const profile = storedProfile ?? defaultCreatorProfile();
         const signalId = input.command.signalId;
         const signal = radar.signals.find(
@@ -1048,7 +1055,9 @@ export function createCreatorDesk(
         const proposal = await dependencies.proposalStore.getLatestProposal();
         if (!proposal || proposal.operationId !== input.command.proposalId) throw new Error("内容建议不存在或不是最新版本");
         const profile = (await dependencies.profileStore?.getCreatorProfile()) ?? defaultCreatorProfile();
-        const memories = await (dependencies.memoryStore?.listMemories({ scope: input.command.platform, status: "accepted" }) ?? Promise.resolve([]));
+        const proposalMode = input.command.proposalMode;
+        const recalledMemories = await (dependencies.memoryStore?.listMemories({ scope: input.command.platform, status: "accepted" }) ?? Promise.resolve([]));
+        const memories = recalledMemories.filter((memory) => memory.synthetic === (proposalMode === "demo"));
         const authority = input.command.proposalMode === "demo" ? dependencies.demoMind : dependencies.mind;
         if (!authority?.draftPlatform) throw new Error(input.command.proposalMode === "demo" ? "演示 Mind 尚未配置平台写作能力" : "核心 Mind 尚未配置平台写作能力");
         let decision: PlatformMindDecision | undefined;
@@ -1432,7 +1441,9 @@ export function createCreatorDesk(
           );
         }
 
-        const memories = await (dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? Promise.resolve([]));
+        const decisionMode = input.command.decisionMode;
+        const recalledMemories = await (dependencies.memoryStore?.listMemories({ scope: "global", status: "accepted" }) ?? Promise.resolve([]));
+        const memories = recalledMemories.filter((memory) => memory.synthetic === (decisionMode === "demo_mind"));
         mindDecision = await rankingMind.rankRadar({
           asOf: now.toISOString(),
           profile,
@@ -1741,6 +1752,8 @@ function buildCompetitionProof(input: {
   autonomyEvidence?: { proposal: ContentProposal; platformDraft: PlatformDraft };
   generatedAt: string;
 }): CompetitionProof {
+  const syntheticMemoryIds = new Set(input.memories.filter((memory) => memory.synthetic).map((memory) => memory.memoryId));
+  const usesSyntheticMemory = (memoryIds?: string[]) => memoryIds?.some((memoryId) => syntheticMemoryIds.has(memoryId)) ?? false;
   const selectionSource = input.latestProposal
     ? input.latestProposal.radarProof
     : input.latestRadar;
@@ -1748,17 +1761,20 @@ function buildCompetitionProof(input: {
     ? {
         status:
           selectionSource.decisionMode === "mind" &&
-          selectionSource.mode === "live"
+          selectionSource.mode === "live" &&
+          !usesSyntheticMemory(selectionSource.mindDecision.usedMemoryIds)
             ? "verified"
             : "demo",
         label:
           selectionSource.decisionMode === "mind" &&
-          selectionSource.mode === "live"
+          selectionSource.mode === "live" &&
+          !usesSyntheticMemory(selectionSource.mindDecision.usedMemoryIds)
             ? "真实 Mind 已参与选题"
             : "仅有演示选题证据",
         detail:
           selectionSource.decisionMode === "mind" &&
-          selectionSource.mode === "live"
+          selectionSource.mode === "live" &&
+          !usesSyntheticMemory(selectionSource.mindDecision.usedMemoryIds)
             ? "真实来源经过核心 Mind 排序，并与本条内容建议绑定。"
             : "当前排序来自 Recorded Mind 或演示来源，不能冒充真实调用。",
         decisionId: selectionSource.mindDecision.decisionId,
@@ -1785,7 +1801,8 @@ function buildCompetitionProof(input: {
       (input.latestProposal.synthetic ||
         input.latestProposal.radarProof?.mode !== "live" ||
         input.latestProposal.radarProof?.decisionMode !== "mind" ||
-        expressionSource.mindId === "recorded-demo-mind"),
+        expressionSource.mindId === "recorded-demo-mind" ||
+        usesSyntheticMemory(expressionSource.usedMemoryIds)),
   );
   const expressionIsVerified = Boolean(
     expressionIsLinked && !expressionIsDemo && expressionSource?.validation.valid,
@@ -1874,6 +1891,7 @@ function buildCompetitionProof(input: {
       input.autonomyEvidence.proposal.radarProof?.mode === "live" &&
       input.autonomyEvidence.proposal.radarProof?.decisionMode === "mind" &&
       input.autonomyEvidence.platformDraft.mindId !== "recorded-demo-mind" &&
+      !usesSyntheticMemory(input.autonomyEvidence.platformDraft.usedMemoryIds) &&
       input.autonomyEvidence.platformDraft.validation.valid,
   );
   const autonomyIsDemo = Boolean(
@@ -1884,7 +1902,8 @@ function buildCompetitionProof(input: {
         input.autonomyEvidence.proposal.synthetic ||
         input.autonomyEvidence.proposal.radarProof?.mode !== "live" ||
         input.autonomyEvidence.proposal.radarProof?.decisionMode !== "mind" ||
-        input.autonomyEvidence.platformDraft.mindId === "recorded-demo-mind"),
+        input.autonomyEvidence.platformDraft.mindId === "recorded-demo-mind" ||
+        usesSyntheticMemory(input.autonomyEvidence.platformDraft.usedMemoryIds)),
   );
   const autonomy: CompetitionProofStage = autonomyIsLinked
       ? {

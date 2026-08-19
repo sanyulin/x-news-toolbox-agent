@@ -92,6 +92,37 @@ describe("比赛优化闭环", () => {
     await expect(desk.submit({ commandId: "rank-unknown-run", command: { type: "run_cycle", trigger: "manual", dataMode: "live_with_demo_fallback", decisionMode: "mind" } })).rejects.toThrow("未知或未批准");
   });
 
+  it("真实 Mind 的选题和写作都不会收到 synthetic 演示记忆", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    const metrics: MetricSnapshot = { capturedAt: "2026-08-13T00:00:00.000Z", source: "manual_entry", values: {}, availableFields: [], missingFields: [], engagementRateFormula: "(likes + replies + reposts + bookmarks) / impressions", calculationState: "incomplete" };
+    await store.saveMemory({ memoryId: "real-memory", scope: "global", text: "真实记忆", sourcePublicationId: "real-publication", sourceMetrics: metrics, confidence: "medium", status: "accepted", createdAt: "2026-08-13T00:00:00.000Z", applicationCount: 0, synthetic: false });
+    await store.saveMemory({ memoryId: "demo-memory", scope: "global", text: "演示记忆", sourcePublicationId: "demo-publication", sourceMetrics: metrics, confidence: "medium", status: "accepted", createdAt: "2026-08-13T00:01:00.000Z", applicationCount: 0, synthetic: true });
+    const received: string[][] = [];
+    const desk = createCreatorDesk({
+      database: { check: async () => ({ ready: true }) },
+      mind: {
+        inspect: async () => ({ state: "connected" as const, mind: { id: "mind", name: "Mind" } }),
+        rankRadar: async (input) => {
+          received.push((input.memories ?? []).map((memory) => memory.memoryId));
+          return { decisionId: "rank-real", mindId: "mind", mindName: "Mind", conversationAlias: "creator-main", rationale: "真实排序", usedMemoryIds: ["real-memory"], memoryInfluence: "使用真实记忆", memoryConflicts: [], rankedSignals: input.signals.map((signal) => ({ signalId: signal.id, relevanceScore: 0.9, why: "适合", recommendation: "write" as const })) };
+        },
+        draftPlatform: async (input) => {
+          received.push((input.memories ?? []).map((memory) => memory.memoryId));
+          return { decisionId: "draft-real", mindId: "mind", mindName: "Mind", conversationAlias: "creator-main", evidenceVersion: input.evidence.version, body: "这是只使用真实记忆生成的完整 X 文案。", hashtags: [], evidenceRefs: [input.evidence.sources[0].id], usedMemoryIds: ["real-memory"], memoryInfluence: "使用真实记忆", memoryConflicts: [] };
+        },
+      },
+      workspaceStore: store, profileStore: store, proposalStore: store, publicationStore: store, learningStore: store, memoryStore: store, platformDraftStore: store, schedulerStore: store,
+      signalSource: { collect: async ({ asOf }) => [{ id: "signal", title: "真实更新", summary: "有来源的真实更新", sourceName: "官方", sourceUrl: "https://example.com", canonicalUrl: "https://example.com", publishedAt: asOf, relevanceScore: 0.9, synthetic: false }] },
+    });
+
+    await desk.submit({ commandId: "real-memory-run", command: { type: "run_cycle", trigger: "manual", dataMode: "live_with_demo_fallback", decisionMode: "mind" } });
+    await desk.submit({ commandId: "real-memory-proposal", command: { type: "prepare_proposal", signalId: "signal", proposalMode: "evidence" } });
+    const proposal = (await desk.inspect({ view: "dashboard" })).latestProposal!;
+    await desk.submit({ commandId: "real-memory-draft", command: { type: "prepare_platform_draft", proposalId: proposal.operationId, platform: "x", proposalMode: "mind" } });
+
+    expect(received).toEqual([["real-memory"], ["real-memory"]]);
+  });
+
   it("平台记忆优先于全局记忆且每次最多召回五条", async () => {
     const store = createSqliteWorkspaceStore(":memory:");
     const metrics: MetricSnapshot = { capturedAt: "2026-08-13T00:00:00.000Z", source: "manual_entry", values: {}, availableFields: [], missingFields: ["impressions", "likes", "replies", "reposts", "bookmarks", "followersDelta"], engagementRateFormula: "(likes + replies + reposts + bookmarks) / impressions", calculationState: "incomplete" };

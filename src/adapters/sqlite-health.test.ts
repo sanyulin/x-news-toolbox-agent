@@ -379,4 +379,54 @@ describe("SQLite 每日任务领取", () => {
       job: { runState: "running", leaseUntil: "2026-08-18T03:01:00.000Z" },
     });
   });
+
+  it("切换输出平台时保留上一轮真实结果", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    await store.configureDailyFollowUp({
+      operationId: "schedule-1",
+      commandId: "schedule-command-1",
+      enabled: true,
+      mode: "real",
+      platform: "xiaohongshu",
+      now: "2026-08-18T02:00:00.000Z",
+    });
+    await store.claimDueDailyFollowUp({ now: "2026-08-18T02:00:00.000Z" });
+    await store.completeDailyFollowUp({
+      completedAt: "2026-08-18T02:05:00.000Z",
+      nextRunAt: "2026-08-19T02:00:00.000Z",
+      candidateCount: 10,
+      priorityCount: 3,
+      plan: {
+        decisionId: "decision-1",
+        mindId: "mind-1",
+        mindName: "测试 Mind",
+        conversationAlias: "creator-main-v1-20260818",
+        action: "scan",
+        focus: "AI",
+        reason: "存在值得写作的候选。",
+        requestedDraftCount: 1,
+        usedMemoryIds: [],
+        memoryInfluence: "本轮没有可用记忆。",
+        memoryConflicts: [],
+      },
+      outcome: "drafted",
+    });
+
+    const updated = await store.configureDailyFollowUp({
+      operationId: "schedule-2",
+      commandId: "schedule-command-2",
+      enabled: true,
+      mode: "real",
+      platform: "x",
+      now: "2026-08-18T02:06:00.000Z",
+    });
+
+    expect(updated.job).toMatchObject({
+      platform: "x",
+      lastRunAt: "2026-08-18T02:05:00.000Z",
+      lastCandidateCount: 10,
+      lastPriorityCount: 3,
+      lastOutcome: "drafted",
+    });
+  });
 });

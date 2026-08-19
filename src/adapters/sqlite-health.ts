@@ -828,28 +828,29 @@ export function createSqliteWorkspaceStore(
       try {
         database.exec("BEGIN IMMEDIATE");
         inTransaction = true;
+        const current = readDailyFollowUp(
+          database
+            .prepare("SELECT job_json FROM daily_follow_up_job WHERE id = 1")
+            .get(),
+        );
         const processed = database
           .prepare(
             "SELECT operation_id FROM workspace_commands WHERE command_id = ?",
           )
           .get(input.commandId) as { operation_id: string } | undefined;
         if (processed) {
-          const job = readDailyFollowUp(
-            database
-              .prepare("SELECT job_json FROM daily_follow_up_job WHERE id = 1")
-              .get(),
-          );
-          if (!job) throw new Error("重复命令缺少每日跟进任务");
+          if (!current) throw new Error("重复命令缺少每日跟进任务");
           database.exec("COMMIT");
           inTransaction = false;
           return {
             operationId: processed.operation_id,
-            job,
+            job: current,
             disposition: "duplicate" as const,
           };
         }
 
         const job: DailyFollowUpJob = {
+          ...current,
           operationId: input.operationId,
           enabled: input.enabled,
           mode: input.mode,
@@ -858,7 +859,9 @@ export function createSqliteWorkspaceStore(
           focus: input.focus?.trim() || undefined,
           dailyTime: input.dailyTime ?? "09:00",
           runState: "idle",
+          leaseUntil: undefined,
           nextRunAt: input.enabled ? input.now : undefined,
+          lastError: undefined,
           updatedAt: input.now,
         };
         database

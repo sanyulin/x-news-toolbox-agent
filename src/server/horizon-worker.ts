@@ -47,10 +47,23 @@ export async function collectHorizonSignals({
   const worker = client ?? await createHorizonMcpClient(settings);
   try {
     await progress("validating");
-    const validation = await worker.call("hz_validate_config", {
+    const validate = () => worker.call("hz_validate_config", {
       config_path: configPath,
       check_env: true,
     });
+    let validation: Record<string, unknown>;
+    try {
+      validation = await validate();
+    } catch (error) {
+      if (!/MCP error -32001|request timed out/i.test(error instanceof Error ? error.message : "")) {
+        throw new Error(`Horizon 配置验证失败：${error instanceof Error ? error.message : "未知错误"}`);
+      }
+      try {
+        validation = await validate();
+      } catch (retryError) {
+        throw new Error(`Horizon 配置验证失败：${retryError instanceof Error ? retryError.message : "未知错误"}`);
+      }
+    }
     const missing = readStringArray(validation.missing_env);
     if (missing.length) throw new Error(`Horizon 缺少运行密钥：${missing.join("、")}`);
 

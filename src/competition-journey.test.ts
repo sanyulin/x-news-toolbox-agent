@@ -376,3 +376,76 @@ describe("比赛关键旅程", () => {
     });
   });
 });
+
+describe("每日任务失败恢复", () => {
+  it("失败后保留原到期时间，让下一次系统唤醒恢复同一任务", async () => {
+    const store = createSqliteWorkspaceStore(":memory:");
+    const ids = ["schedule-op", "radar-op", "proposal-op", "draft-op"];
+    let now = new Date("2026-08-20T02:00:00.000Z");
+    let attempts = 0;
+    const desk = createCreatorDesk({
+      database: { check: async () => ({ ready: true }) },
+      mind: { inspect: async () => ({ state: "not_configured" as const, guidance: "未配置" }) },
+      demoMind: createRecordedMindAuthority(),
+      workspaceStore: store,
+      profileStore: store,
+      proposalStore: store,
+      memoryStore: store,
+      platformDraftStore: store,
+      schedulerStore: store,
+      signalSource: {
+        collect: async ({ asOf }) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("Horizon 配置验证失败：MCP request timed out");
+          return [{
+            id: "retry-signal",
+            title: "可恢复的真实任务",
+            summary: "第一次 Worker 瞬时失败，系统应在下一次唤醒继续同一任务。",
+            sourceName: "测试来源",
+            sourceUrl: "https://example.com/retry",
+            canonicalUrl: "https://example.com/retry",
+            publishedAt: asOf,
+            relevanceScore: 0.9,
+            synthetic: true,
+          }];
+        },
+      },
+      idFactory: () => ids.shift()!,
+      clock: () => now,
+    });
+
+    await desk.submit({
+      commandId: "retry-config",
+      command: { type: "configure_daily_follow_up", enabled: true, mode: "demo", platform: "x", dailyTime: "10:00" },
+    });
+    await expect(desk.submit({ commandId: "retry-first", command: { type: "process_due_follow_up" } }))
+      .rejects.toThrow("Horizon 配置验证失败");
+    await expect(desk.inspect({ view: "dashboard" })).resolves.toMatchObject({
+      systemStatus: {
+        scheduler: {
+          runState: "failed",
+          nextRunAt: "2026-08-20T02:00:00.000Z",
+          lastAttemptAt: "2026-08-20T02:00:00.000Z",
+          lastError: "Horizon 配置验证失败：MCP request timed out",
+        },
+      },
+    });
+
+    now = new Date("2026-08-20T02:10:00.000Z");
+    const recovered = await desk.submit({ commandId: "retry-second", command: { type: "process_due_follow_up" } });
+
+    expect(recovered.operationId).not.toBe("daily-follow-up-idle");
+    expect(attempts).toBe(2);
+    await expect(desk.inspect({ view: "dashboard" })).resolves.toMatchObject({
+      systemStatus: {
+        scheduler: {
+          runState: "idle",
+          lastRunAt: "2026-08-20T02:10:00.000Z",
+          lastAttemptAt: "2026-08-20T02:10:00.000Z",
+          nextRunAt: "2026-08-21T02:00:00.000Z",
+          lastError: undefined,
+        },
+      },
+    });
+  });
+});

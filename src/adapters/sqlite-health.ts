@@ -919,6 +919,7 @@ export function createSqliteWorkspaceStore(
           ...current,
           runState: "running",
           leaseUntil: new Date(Date.parse(input.now) + 30 * 60_000).toISOString(),
+          lastAttemptAt: input.now,
           lastError: undefined,
           updatedAt: input.now,
         };

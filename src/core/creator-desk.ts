@@ -188,6 +188,7 @@ export interface DailyFollowUpJob {
   runState: "idle" | "running" | "failed";
   leaseUntil?: string;
   nextRunAt?: string;
+  lastAttemptAt?: string;
   lastRunAt?: string;
   lastRadarOperationId?: string;
   lastProposalOperationId?: string;
@@ -863,7 +864,7 @@ export function createCreatorDesk(
         } catch (error) {
           await dependencies.schedulerStore.failDailyFollowUp({
             failedAt: now.toISOString(),
-            nextRunAt,
+            nextRunAt: claimed.scheduledFor,
             error: error instanceof Error ? error.message : "每日自主跟进失败",
           });
           throw error;
@@ -1606,6 +1607,7 @@ export function createCreatorDesk(
                 runState: dailyFollowUp.runState,
                 leaseUntil: dailyFollowUp.leaseUntil,
                 nextRunAt: dailyFollowUp.nextRunAt,
+                lastAttemptAt: dailyFollowUp.lastAttemptAt,
                 lastRunAt: dailyFollowUp.lastRunAt,
                 lastRadarOperationId: dailyFollowUp.lastRadarOperationId,
                 lastProposalOperationId: dailyFollowUp.lastProposalOperationId,

@@ -75,6 +75,7 @@ export async function executeAgentCommand(
               platform: scheduler.platform,
               runState: scheduler.runState,
               nextRunAt: scheduler.nextRunAt,
+              lastAttemptAt: scheduler.lastAttemptAt,
               lastRunAt: scheduler.lastRunAt,
               lastOutcome: scheduler.lastOutcome,
               lastError: scheduler.lastError,

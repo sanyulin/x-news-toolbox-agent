@@ -94,4 +94,51 @@ describe("Horizon worker pipeline", () => {
     expect(readFileSync(configPath, "utf8")).not.toContain("secret-key");
     expect(client.close).toHaveBeenCalledOnce();
   });
+
+  it("配置验证遇到瞬时 MCP 超时时重试一次再继续采集", async () => {
+    let validationAttempts = 0;
+    const client: HorizonToolClient = {
+      async call(name) {
+        if (name === "hz_validate_config") {
+          validationAttempts += 1;
+          if (validationAttempts === 1) throw new Error("MCP error -32001: Request timed out");
+          return { missing_env: [], warnings: [] };
+        }
+        if (name === "hz_fetch_items") return { run_id: "retry-run" };
+        if (name === "hz_get_run_stage") return { items: [{
+          id: "rss:item:retry",
+          source_type: "rss",
+          title: "Recovered item",
+          url: "https://example.com/recovered",
+          content: "Evidence after validation retry",
+          published_at: "2026-08-20T03:00:00Z",
+          metadata: { feed_name: "Example" },
+          ai_score: 8,
+        }] };
+        return {};
+      },
+      diagnostics: () => [],
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await collectHorizonSignals({
+      settings: {
+        enabled: true,
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        apiKey: "secret-key",
+        hours: 168,
+        threshold: 7,
+        hackerNews: false,
+        ossInsight: false,
+        enrich: false,
+      },
+      sources: [],
+      client,
+      configPath,
+    });
+
+    expect(validationAttempts).toBe(2);
+    expect(result.signals).toHaveLength(1);
+  });
 });
